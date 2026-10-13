@@ -3,6 +3,7 @@
   import { Button, Field, Loading, Notice, StatusIcon, plural } from "@mycelium/ui";
   import { mergeOrConflict, runsFor, type RunSummary } from "$lib/pulls";
   import { debounce, onLive } from "$lib/live.svelte";
+  import RequiredChecks from "./RequiredChecks.svelte";
 
   /**
    * Merge an open pull request: mergeability from the diff, workflow runs
@@ -39,6 +40,9 @@
   let merging = $state(false);
   let error = $state<string | null>(null);
   let conflict = $state<{ files: string[]; diff: string } | null>(null);
+  /** Why required checks block the merge (RequiredChecks), or null. */
+  let checksBlocking = $state<string | null>(null);
+  let requiredWorkflows = $state<string[]>([]);
 
   // --- Workflow runs (slot for the Actions feature: GET /runs?sha=) ---------
   let runs = $state<RunSummary[] | null>(null);
@@ -72,10 +76,19 @@
 </script>
 
 <section class="grid gap-3 border border-line p-4" aria-label="Merge">
+  <RequiredChecks
+    {repo}
+    number={pull.number}
+    headSha={diff?.headSha ?? pull.headSha}
+    {owner}
+    bind:blocking={checksBlocking}
+    bind:workflows={requiredWorkflows}
+  />
+
   <!-- Workflow run status: shown only when the Actions feature answers /runs?sha= -->
-  {#if runs && runs.length > 0}
+  {#if runs && runs.some((r) => !requiredWorkflows.includes(r.workflow))}
     <ul class="grid gap-0.5" aria-label="Workflow runs">
-      {#each runs as run (run.number)}
+      {#each runs.filter((r) => !requiredWorkflows.includes(r.workflow)) as run (run.number)}
         <li class="flex flex-wrap items-baseline gap-x-3 text-meta">
           <StatusIcon status={run.status} label />
           <a href="/{repo}/actions/runs/{run.number}">{run.workflow}</a>
@@ -120,10 +133,15 @@
           <textarea class="input" rows="2" bind:value={message}></textarea>
         </Field>
       {/if}
-      <div>
-        <Button variant="primary" onclick={merge} disabled={merging || !diff.mergeable}>
+      <div class="flex flex-wrap items-baseline gap-3">
+        <Button
+          variant="primary"
+          onclick={merge}
+          disabled={merging || !diff.mergeable || !!checksBlocking}
+        >
           {merging ? "Merging…" : (METHODS.find((m) => m.id === method)?.label ?? "Merge")}
         </Button>
+        {#if checksBlocking}<span class="text-meta text-muted">{checksBlocking}</span>{/if}
       </div>
     </div>
   {/if}

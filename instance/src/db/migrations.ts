@@ -123,6 +123,19 @@ export const MIGRATIONS: Migration[] = [
       )`,
     ],
   },
+  {
+    // Workflows that must succeed on a pull request's head before it merges
+    // into `branch` (src/checks/).
+    name: "0004_required_checks",
+    statements: [
+      `CREATE TABLE required_checks (
+        repo TEXT NOT NULL,
+        branch TEXT NOT NULL,
+        workflow TEXT NOT NULL,
+        PRIMARY KEY (repo, branch, workflow)
+      )`,
+    ],
+  },
 ];
 
 /** All migrations, in order. */

@@ -120,6 +120,11 @@ run_steps(run_id INTEGER NOT NULL, idx INTEGER NOT NULL, name TEXT NOT NULL, com
      started_at TEXT, finished_at TEXT, PRIMARY KEY (run_id, idx))
 ```
 
+Migration `0004_required_checks` adds `required_checks(repo, branch, workflow)` (primary key all
+three): workflows that must pass before a pull request merges into `branch`. `src/checks/`
+evaluates them on the PR's `head_sha` by each workflow's latest run there (any event); the merge
+endpoint answers 409 `{ error, checks }` until all have succeeded, and then merges only that sha.
+
 Numbers (`pulls.number`, `runs.number`) come from `counters` per repo and kind, like GitHub.
 Before `0001`, `@mycelium/platform` applies its own `platform_0001_oauth` and
 `platform_0002_web_sessions`; `0001_platform` adds `settings` and `api_tokens`. `nextNumber(db,
@@ -251,6 +256,8 @@ GET/POST /api/repos/:repo/pulls/:n/comments {body}
 GET  /api/repos/:repo/pulls/branches         GET /api/repos/:repo/pulls/compare?base=&head=
 GET  /api/repos/:repo/runs                   POST /api/repos/:repo/runs {workflow, ref}
 GET  /api/repos/:repo/runs/:n                GET /api/repos/:repo/workflows
+GET  /api/repos/:repo/checks/required?branch=  PUT .../checks/required {branch, workflows[]}
+GET  /api/repos/:repo/pulls/:n/checks        POST .../pulls/:n/checks/run  (start missing required ones)
 GET  /api/tokens · POST /api/tokens · DELETE /api/tokens/:id
 GET  /api/live · GET /api/repos/:repo/live   WebSocket upgrades (live updates)
 GET  /api/activity?limit=&repo=             recent pushes, PR events and runs, newest first
