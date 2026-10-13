@@ -41,6 +41,7 @@
   let conflict = $state<{ files: string[]; diff: string } | null>(null);
   /** Why required checks block the merge (RequiredChecks), or null. */
   let checksBlocking = $state<string | null>(null);
+  let requiredWorkflows = $state<string[]>([]);
 
   // --- Workflow runs (slot for the Actions feature: GET /runs?sha=) ---------
   let runs = $state<RunSummary[] | null>(null);
@@ -73,12 +74,13 @@
     headSha={diff?.headSha ?? pull.headSha}
     {owner}
     bind:blocking={checksBlocking}
+    bind:workflows={requiredWorkflows}
   />
 
   <!-- Workflow run status: shown only when the Actions feature answers /runs?sha= -->
-  {#if runs && runs.length > 0}
+  {#if runs && runs.some((r) => !requiredWorkflows.includes(r.workflow))}
     <ul class="grid gap-0.5" aria-label="Workflow runs">
-      {#each runs as run (run.number)}
+      {#each runs.filter((r) => !requiredWorkflows.includes(r.workflow)) as run (run.number)}
         <li class="flex flex-wrap items-baseline gap-x-3 text-meta">
           <StatusIcon status={run.status} label />
           <a href="/{repo}/actions/runs/{run.number}">{run.workflow}</a>

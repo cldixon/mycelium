@@ -14,6 +14,7 @@
     headSha,
     owner,
     blocking = $bindable(null),
+    workflows = $bindable([]),
   }: {
     repo: string;
     number: number;
@@ -21,6 +22,8 @@
     headSha: string | null;
     owner: boolean;
     blocking?: string | null;
+    /** The required workflows' names, so the merge box can leave them out of its other runs. */
+    workflows?: string[];
   } = $props();
 
   let evaluation = $state<ChecksEvaluation | null>(null);
@@ -28,7 +31,12 @@
   let starting = $state(false);
   let notice = $state<string | null>(null);
 
-  const LABELS = { success: "passed", failure: "failed", pending: "running", missing: "not run" };
+  const LABELS = {
+    success: "passed",
+    failure: "failed",
+    pending: "in progress",
+    missing: "not run",
+  };
 
   async function load() {
     try {
@@ -54,6 +62,7 @@
 
   $effect(() => {
     blocking = blockingReason(evaluation);
+    workflows = evaluation?.required.map((c) => c.workflow) ?? [];
   });
 
   let missing = $derived(evaluation?.required.filter((c) => c.status === "missing") ?? []);
