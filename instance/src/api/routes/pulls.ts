@@ -1,5 +1,6 @@
 import { Hono, type Context } from "hono";
 import { getOwnerHandle } from "../../auth/owner.js";
+import { evaluate, unsatisfiedReason } from "../../checks/index.js";
 import { getDb } from "../../db/migrations.js";
 import { getRepoRow } from "../../git/artifacts.js";
 import { diffJob, mergeJob, repoRefs } from "../../pulls/git.js";
@@ -22,6 +23,7 @@ import {
   updatePull,
 } from "../../pulls/store.js";
 import { toPull, type PullRow, type RepoRow } from "../../shared/types.js";
+import { publish } from "../../live/publish.js";
 import { canRead, requireOwner, type AppEnv, type OwnerEnv } from "../session.js";
 
 /**
@@ -83,6 +85,12 @@ const pullRuns = (c: C, repo: string, number: number, headSha: string) =>
 /** Who the owner is in pull requests and comments: the handle, or the DID. */
 async function ownerName(c: C): Promise<string> {
   return (await getOwnerHandle(c.get("db"))) ?? c.get("ownerDid");
+}
+
+/** Who is writing: an agent by its name, or the owner (#17). */
+async function authorOf(c: C): Promise<{ name: string; kind: "owner" | "agent" }> {
+  const actor = c.get("actor");
+  return actor.kind === "agent" ? actor : { name: await ownerName(c), kind: "owner" };
 }
 
 /** Preview a pull request before opening it: ?base=&head= */
@@ -149,11 +157,12 @@ pullsRoute.post("/pulls", requireOwner, async (c) => {
     body: text.slice(0, 65536),
     head,
     base,
-    author: await ownerName(c),
+    ...(await authorOf(c).then((a) => ({ author: a.name, authorKind: a.kind }))),
     headSha,
     baseSha,
   });
   pullRuns(c, row.name, pull.number, headSha);
+  await publish(c.env, row.name, { type: "pull", number: pull.number, action: "opened" });
   return c.json(toPull(pull), 201);
 });
 
@@ -188,6 +197,8 @@ pullsRoute.patch("/pulls/:n{[0-9]+}", requireOwner, async (c) => {
   }
   if (Object.keys(update).length === 0) return c.json(toPull(pull));
   const updated = await updatePull(c.get("db"), pull.id, update);
+  const action = update.state ? (update.state === "open" ? "reopened" : "closed") : "updated";
+  await publish(c.env, row.name, { type: "pull", number: pull.number, action });
   if (update.state === "open" && updated.head_sha) {
     pullRuns(c, row.name, updated.number, updated.head_sha);
   }
@@ -235,7 +246,16 @@ pullsRoute.post("/pulls/:n{[0-9]+}/merge", requireOwner, async (c) => {
     typeof body.message === "string" && body.message.trim()
       ? body.message.trim()
       : defaultMergeMessage(pull, method);
-  const headSha = typeof body.headSha === "string" ? body.headSha : undefined;
+  let headSha = typeof body.headSha === "string" ? body.headSha : undefined;
+  // Required checks (src/checks): every required workflow must have passed on the head.
+  const checks = await evaluate(c.env, row.name, pull);
+  if (!checks.satisfied) return c.json({ error: unsatisfiedReason(checks), checks }, 409);
+  if (checks.required.length > 0) {
+    if (headSha && headSha !== pull.head_sha) {
+      return c.json({ error: "The head moved since the checks ran; reload", checks }, 409);
+    }
+    headSha = pull.head_sha ?? undefined; // merge only the commit the checks passed on
+  }
   const author = ownerIdentity(
     await getOwnerHandle(c.get("db")),
     c.get("ownerDid"),
@@ -263,6 +283,7 @@ pullsRoute.post("/pulls/:n{[0-9]+}/merge", requireOwner, async (c) => {
       head_sha: result.headSha,
       base_sha: result.baseSha,
     });
+    await publish(c.env, row.name, { type: "pull", number: pull.number, action: "merged" });
     return c.json(toPull(merged));
   } catch (error) {
     return failed(c, error);
@@ -281,11 +302,15 @@ pullsRoute.post("/pulls/:n{[0-9]+}/comments", requireOwner, async (c) => {
   const body = await readJson(c);
   const text = typeof body?.body === "string" ? body.body.trim() : "";
   if (!text) return c.json({ error: "A comment needs a body" }, 400);
+  const author = await authorOf(c);
   const comment = await addComment(
     c.get("db"),
     found.pull.id,
-    await ownerName(c),
+    author.name,
     text.slice(0, 65536),
+    author.kind,
   );
+  const { row, pull } = found;
+  await publish(c.env, row.name, { type: "pull", number: pull.number, action: "commented" });
   return c.json(comment, 201);
 });

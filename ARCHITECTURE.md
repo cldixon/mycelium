@@ -42,7 +42,8 @@ instance/                 @mycelium/instance: the Worker (Hono)
   src/worker.ts           exports { fetch, queue } and the RunnerContainer Durable Object
   src/api/app.ts          Hono app; mounts routes; ASSETS fallback for the SPA
   src/api/routes/         auth.ts, repos.ts, code.ts, pulls.ts, actions.ts, settings.ts
-  src/api/session.ts      cookie session + requireOwner / canRead guards
+  src/api/session.ts      cookie session + requireOwner / canRead guards; the request's actor
+  src/mcp/                MCP server at /mcp for agents (server.ts tools, route.ts auth)
   src/auth/               owner + setup code, OAuth client, API tokens (from igloo)
   src/db/migrations.ts    ordered, append-only SQL migrations (self-applying)
   src/git/                artifacts.ts (binding helpers), refs.ts (smart HTTP), diff.ts (tree/line diff)
@@ -52,11 +53,13 @@ instance/                 @mycelium/instance: the Worker (Hono)
   src/jobs/workflow.ts    runWorkflow(env, runId): extension point for jobs-queue messages; enqueueRun
   src/shared/types.ts     API types shared with the web app (`$shared/types` there)
   src/shared/jobs.ts      runner Job/result types, shared with runner/ (type-only imports)
+  src/live/               LiveHub DO (hub.ts), publish(env, repo, event), activity query
 instance/web/             SvelteKit SPA (adapter-static, ssr=false), served by Workers Static Assets
 runner/                   the container: Dockerfile + src/server.ts + src/jobs/*.ts
 packages/platform/        copied from igloo: migrate, settings, web-sessions, oauth, identity, testing
 packages/ui/              copied from igloo's @igloo/ui as @mycelium/ui: tokens + Svelte components
 packages/create-mycelium/ `bun create mycelium`: writes an owner's deploy folder (see instance/cli, scripts/pack.ts)
+skills/mycelium/SKILL.md  agent skill: working in an instance over MCP and git
 probes/                   throwaway exploration code; do not import from it
 ```
 
@@ -64,7 +67,7 @@ probes/                   throwaway exploration code; do not import from it
 
 `mycelium-instance` (name from config) serves:
 
-- `/api/*`, `/oauth/*`, `/health` → Hono. Everything else → the SPA (`ASSETS`,
+- `/api/*`, `/oauth/*`, `/health`, `/mcp` → Hono. Everything else → the SPA (`ASSETS`,
   `notFoundHandling: "single-page-application"`, `runWorkerFirst` for the API paths).
 - `queue()` consumes two queues: `<worker>-events` (Artifacts push events) and `<worker>-jobs`
   (our own async jobs: workflow runs).
@@ -75,7 +78,7 @@ Secrets are not declared in the cf config (declared secrets are required); they 
 fields on the hand-written `Bindings` type in `src/api/bindings.ts`.
 
 Bindings: `DB` (D1), `ARTIFACTS` (namespace from config, default = worker name), `ASSETS`,
-`JOBS` (queue producer), `RUNNER` (DO namespace). Secrets: `SETUP_CODE`, `OAUTH_SIGNING_KEY`
+`JOBS` (queue producer), `RUNNER` (DO namespace), `LIVE` (LiveHub DO namespace). Secrets: `SETUP_CODE`, `OAUTH_SIGNING_KEY`
 (both optional, generated into settings like igloo), `CF_API_TOKEN` (optional; enables push
 subscriptions). Text vars: `INSTANCE_TITLE`.
 
@@ -88,6 +91,16 @@ subscriptions). Text vars: `INSTANCE_TITLE`.
 - Session cookie `mycelium_session` (sha256 stored in `web_sessions`).
 - API tokens (`myc_<hex>`, sha256 stored, always expiring) for scripts and agents:
   `Authorization: Bearer`. `requireOwner` accepts either.
+- Agents (#17): a token may name an agent (`api_tokens.agent`, lowercase `[a-z0-9._-]`, null =
+  the owner's own scripts) and has a scope (`write`, or `read`: no writes except read-only git
+  credentials). `requireOwner` sets `c.get("actor")` = `{ kind: "owner" | "agent", name,
+  tokenId?, scope }`. Pull requests and comments keep the name in `author` with `author_kind`;
+  manual runs record `actor`/`actor_kind`; minted git credentials are logged in `git_grants`.
+  The UI marks agents with `Actor` (`@mycelium/ui`, Lucide `bot`).
+- MCP (`/mcp`, `src/mcp/`): Tempra's pattern, a stateless `McpServer` +
+  `WebStandardStreamableHTTPServerTransport` per request, bearer API token only. Each tool calls
+  the REST API in process with the caller's token, so routes stay the one place for access
+  checks, validation and attribution. Read tokens don't see write tools.
 - Repos have `visibility`: `private` (owner only, default) or `public` (read-only for anyone).
   Every read route goes through `canRead(c, repo)`; every write through `requireOwner`.
 - Git access: the owner (or an agent with an API token) asks the instance for a short-lived
@@ -121,9 +134,17 @@ run_steps(run_id INTEGER NOT NULL, idx INTEGER NOT NULL, name TEXT NOT NULL, com
      started_at TEXT, finished_at TEXT, PRIMARY KEY (run_id, idx))
 ```
 
+Migration `0004_required_checks` adds `required_checks(repo, branch, workflow)` (primary key all
+three): workflows that must pass before a pull request merges into `branch`. `src/checks/`
+evaluates them on the PR's `head_sha` by each workflow's latest run there (any event); the merge
+endpoint answers 409 `{ error, checks }` until all have succeeded, and then merges only that sha.
+
 Numbers (`pulls.number`, `runs.number`) come from `counters` per repo and kind, like GitHub.
 Before `0001`, `@mycelium/platform` applies its own `platform_0001_oauth` and
-`platform_0002_web_sessions`; `0001_platform` adds `settings` and `api_tokens`. `nextNumber(db,
+`platform_0002_web_sessions`; `0001_platform` adds `settings` and `api_tokens`; `0003_agents`
+adds `api_tokens.agent`/`scope`, `pulls.author_kind`, `pull_comments.author_kind`,
+`runs.actor`/`actor_kind` and `git_grants(repo, actor, actor_kind, token_id, scope, expires_at,
+created_at)`. `nextNumber(db,
 repo, kind)` in `src/db/migrations.ts` claims the next number atomically.
 
 ## Runner container protocol
@@ -198,6 +219,21 @@ name, a tag push with `ref` = `refs/tags/<name>` at the commit the tag points at
 are peeled). Pushes are stored once per (repo, ref, after), so a tag on an already-pushed commit
 still counts.
 
+## Live updates
+
+A `LiveHub` Durable Object (`src/live/hub.ts`, hibernation WebSocket API, `ping` → `pong`
+auto-response) holds browsers' sockets: one per repo (`idFromName("repo:<name>")`) and one for
+the instance (`idFromName("instance")`). Features call `publish(env, repo, event)`
+(`src/live/publish.ts`) after a change lands in D1; it never throws, gives up after 3 s, and sends
+the event to the repo's hub and the instance's. Events (`src/shared/live.ts`): `push` {ref,
+before, after, count}, `pull` {number, action: opened|updated|merged|closed|reopened|commented},
+`run` {number, workflow, status, step?}, `repo` {action: created|updated|deleted}; each carries
+`repo`, `at` and `private`. The Worker authorizes each socket (`routes/live.ts`: a private repo's
+feed is the owner's only; a cookie counts only from this origin) and marks the owner's; hubs send
+private events to owner sockets only and ask owner sockets older than an hour to reconnect (close
+4001). The SPA keeps one socket per scope (`web/src/lib/live.svelte.ts`) with backoff, reloads in
+place on events and after a reconnect, and polls only while its socket is down.
+
 ## Diffs
 
 - Commit view: the Worker diffs the commit's tree against its first parent's tree (recursive
@@ -217,6 +253,7 @@ Routes (repo names are a single path segment; the owner's handle is shown, not r
 /                                  repositories (+ New repository: create empty or import a public git URL)
 /signin                            sign in / claim
 /settings                          instance settings: API tokens, owner, about
+/activity                          recent pushes, pull requests and runs across repos, live
 /:repo                             Code tab: default branch tree + README
 /:repo/tree/:ref/[...path]         directory
 /:repo/blob/:ref/[...path]         file
@@ -232,7 +269,7 @@ Routes (repo names are a single path segment; the owner's handle is shown, not r
 /:repo/settings                    description, visibility, default branch, git credentials, delete
 ```
 
-Static routes win over `[repo]`, so repo names `signin`, `settings`, `api`, `oauth` and `health`
+Static routes win over `[repo]`, so repo names `signin`, `settings`, `activity`, `api`, `oauth` and `health`
 must be rejected at creation. Branch names may contain `/`; `tree/[ref]/[...path]` has to resolve
 the longest matching ref (from `/refs`).
 
@@ -257,7 +294,13 @@ GET/POST /api/repos/:repo/pulls/:n/comments {body}
 GET  /api/repos/:repo/pulls/compare?base=&head=   (branch pickers use GET /refs)
 GET  /api/repos/:repo/runs                   POST /api/repos/:repo/runs {workflow, ref}
 GET  /api/repos/:repo/runs/:n                GET /api/repos/:repo/workflows
-GET  /api/tokens · POST /api/tokens · DELETE /api/tokens/:id
+GET  /api/repos/:repo/checks/required?branch=  PUT .../checks/required {branch, workflows[]}
+GET  /api/repos/:repo/pulls/:n/checks        POST .../pulls/:n/checks/run  (start missing required ones)
+GET  /api/repos/:repo/git-credentials        recent grants: who minted git credentials (owner)
+GET  /api/tokens · POST /api/tokens {name, days, agent?, scope?} · DELETE /api/tokens/:id
+POST /mcp                                    MCP (Streamable HTTP, JSON responses; bearer API token)
+GET  /api/live · GET /api/repos/:repo/live   WebSocket upgrades (live updates)
+GET  /api/activity?limit=&repo=             recent pushes, PR events and runs, newest first
 ```
 
 In the code routes `:ref` is the rest of the URL path, so branch names with `/` need no escaping

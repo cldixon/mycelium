@@ -1,6 +1,12 @@
 import { Hono, type Context } from "hono";
 import { getOwnerHandle } from "../../auth/owner.js";
-import { TokenError, createApiToken, listApiTokens, revokeApiToken } from "../../auth/tokens.js";
+import {
+  TokenError,
+  createApiToken,
+  listApiTokens,
+  revokeApiToken,
+  type TokenScope,
+} from "../../auth/tokens.js";
 import type { InstanceSettings } from "../../shared/types.js";
 import { requireOwner, type OwnerEnv } from "../session.js";
 import pkg from "../../../package.json";
@@ -42,11 +48,17 @@ settingsRoute.get("/tokens", async (c) => {
 settingsRoute.post("/tokens", async (c) => {
   const refused = browserOnly(c);
   if (refused) return refused;
-  const body = await c.req
-    .json<{ name?: string; days?: number }>()
-    .catch(() => ({}) as { name?: string; days?: number });
+  type Input = { name?: string; days?: number; agent?: string | null; scope?: TokenScope };
+  const body = await c.req.json<Input>().catch(() => ({}) as Input);
+  if (body.agent != null && typeof body.agent !== "string") {
+    return c.json({ error: "agent must be a string" }, 400);
+  }
   try {
-    return c.json(await createApiToken(c.var.db, body.name ?? "", Number(body.days ?? 90)), 201);
+    const created = await createApiToken(c.var.db, body.name ?? "", Number(body.days ?? 90), {
+      agent: body.agent,
+      scope: body.scope,
+    });
+    return c.json(created, 201);
   } catch (error) {
     if (error instanceof TokenError) return c.json({ error: error.message }, 400);
     throw error;

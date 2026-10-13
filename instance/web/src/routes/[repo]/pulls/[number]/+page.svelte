@@ -2,6 +2,7 @@
   import { invalidate } from "$app/navigation";
   import type { DiffResult } from "$shared/types";
   import {
+    Actor,
     Button,
     EmptyState,
     Field,
@@ -17,10 +18,14 @@
   import PullFiles from "../PullFiles.svelte";
   import PullCommits from "../PullCommits.svelte";
   import MergeBox from "../MergeBox.svelte";
+  import { debounce, onLive } from "$lib/live.svelte";
 
   let { data } = $props();
-  const who = (author: string) =>
-    personName(author, { did: data.status?.owner, handle: data.status?.handle });
+  /** The owner by handle (else short DID); agents by their own name. */
+  const who = (author: string, kind?: string) =>
+    kind === "agent"
+      ? author
+      : personName(author, { did: data.status?.owner, handle: data.status?.handle });
 
   let repo = $derived(data.repo.name);
   let pull = $derived(data.pull);
@@ -52,6 +57,15 @@
 
   const reload = () => invalidate("mycelium:pull");
 
+  // Live: this pull request's events (and reconnects) reload it.
+  const liveReload = debounce(reload);
+  $effect(() => {
+    const n = pull.number;
+    return onLive(repo, ["pull"], (m) => {
+      if (!m || (m.type === "pull" && m.number === n)) liveReload();
+    });
+  });
+
   async function act(fn: () => Promise<unknown>) {
     busy = true;
     error = null;
@@ -81,7 +95,7 @@
   <PageHeader title="{pull.title} #{pull.number}">
     {#snippet status()}<span class="eyebrow">{pull.state}</span>{/snippet}
     {#snippet meta()}
-      {who(pull.author)}
+      <Actor name={who(pull.author, pull.authorKind)} kind={pull.authorKind} />
       {#if pull.state === "merged"}
         merged <span class="data">{pull.head}</span> into <span class="data">{pull.base}</span>
         {pull.mergedAt ? ago(pull.mergedAt) : ""}
@@ -100,7 +114,11 @@
   {#if data.tab === "conversation"}
     <div class="grid max-w-reading gap-4">
       <article class="grid gap-2 border-b border-line-soft pb-4">
-        <p class="text-meta text-muted">{who(pull.author)} · {ago(pull.createdAt)}</p>
+        <p class="text-meta text-muted">
+          <Actor name={who(pull.author, pull.authorKind)} kind={pull.authorKind} /> · {ago(
+            pull.createdAt,
+          )}
+        </p>
         {#if pull.body.trim()}
           <Readme markdown={pull.body} />
         {:else}
@@ -110,7 +128,9 @@
 
       {#each data.comments as c (c.id)}
         <article class="grid gap-2 border-b border-line-soft pb-4">
-          <p class="text-meta text-muted">{who(c.author)} · {ago(c.createdAt)}</p>
+          <p class="text-meta text-muted">
+            <Actor name={who(c.author, c.authorKind)} kind={c.authorKind} /> · {ago(c.createdAt)}
+          </p>
           <Readme markdown={c.body} />
         </article>
       {/each}

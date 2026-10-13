@@ -3,6 +3,7 @@
   import { goto } from "$app/navigation";
   import type { RefInfo, Run, WorkflowList } from "$shared/types";
   import {
+    Actor,
     Button,
     EmptyState,
     Loading,
@@ -13,6 +14,7 @@
     timeAgo,
   } from "@mycelium/ui";
   import { actions, duration, isActive, poll } from "$lib/actions";
+  import { debounce, liveFeed, onLive } from "$lib/live.svelte";
 
   let { data } = $props();
   let repo = $derived(data.repo.name);
@@ -41,15 +43,32 @@
     now = Date.now();
   }
 
-  onMount(() => {
-    loadRuns();
+  function loadWorkflows() {
     actions
       .workflows(repo)
-      .then((w) => (list = w))
+      .then((w) => ((list = w), (listError = null)))
       .catch((e) => (listError = e instanceof Error ? e.message : String(e)));
     if (owner) actions.refs(repo).then((r) => (branches = r?.branches ?? []));
-    return poll(loadRuns, () => runs?.some((r) => isActive(r.status)) ?? false);
+  }
+
+  onMount(() => {
+    loadRuns();
+    loadWorkflows();
+    // Polling is the fallback while the live socket is down.
+    return poll(
+      loadRuns,
+      () => liveFeed(repo).status !== "live" && (runs?.some((r) => isActive(r.status)) ?? false),
+    );
   });
+  $effect(() => onLive(repo, ["run"], debounce(loadRuns, 150)));
+  // A push (or a reconnect) may change the workflow files and branches.
+  $effect(() =>
+    onLive(
+      repo,
+      ["push"],
+      debounce(() => (loadWorkflows(), loadRuns()), 300),
+    ),
+  );
 
   function open(workflow: string) {
     running = running === workflow ? null : workflow;
@@ -107,6 +126,7 @@
                 <td class="nowrap">
                   {run.event}{#if run.pullNumber}
                     · <a href="/{repo}/pulls/{run.pullNumber}">#{run.pullNumber}</a>{/if}
+                  {#if run.actor}by <Actor name={run.actor.name} kind={run.actor.kind} />{/if}
                 </td>
                 <td class="data nowrap">
                   {run.ref} · <a href="/{repo}/commit/{run.sha}">{shortSha(run.sha)}</a>

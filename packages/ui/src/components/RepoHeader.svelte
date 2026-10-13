@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from "svelte";
   import TabNav from "./TabNav.svelte";
   import type { RepoTab, TabItem } from "../types.js";
 
@@ -13,6 +14,7 @@
     current,
     owner = false,
     base,
+    aside,
   }: {
     handle?: string | null;
     repo: string;
@@ -21,6 +23,8 @@
     owner?: boolean;
     /** Where the repo's pages live. Defaults to `/<repo>`. */
     base?: string;
+    /** Shown at the end of the title line (e.g. a LiveIndicator). */
+    aside?: Snippet;
   } = $props();
 
   let root = $derived(base ?? `/${repo}`);
@@ -42,6 +46,7 @@
         >{/if}<a href={root} class="font-semibold no-underline">{repo}</a>
     </h1>
     <span class="eyebrow">{visibility}</span>
+    {#if aside}<span class="ml-auto">{@render aside()}</span>{/if}
   </div>
   <TabNav items={tabs} {current} label="Repository" />
 </header>

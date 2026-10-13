@@ -40,6 +40,12 @@ export type RunEvent = "push" | "pull_request" | "manual";
 export type RunStatus = "queued" | "running" | "success" | "failure" | "error" | "cancelled";
 export type StepStatus = "pending" | "running" | "success" | "failure" | "error" | "skipped";
 
+// --- Agents (#17) -------------------------------------------------------------
+
+/** Who did something: the owner, or an agent acting with a named API token. */
+export type ActorKind = "owner" | "agent";
+export type Actor = { kind: ActorKind; name: string };
+
 // --- Auth (/api/auth) --------------------------------------------------------
 
 export type AuthStatus = {
@@ -96,7 +102,15 @@ export function lastActivity(repo: Pick<Repo, "updatedAt" | "pushedAt">): string
  * Repo names are one URL path segment. Static web routes win over `[repo]`,
  * so their names are reserved.
  */
-export const RESERVED_REPO_NAMES = ["signin", "settings", "api", "oauth", "health", "new"];
+export const RESERVED_REPO_NAMES = [
+  "signin",
+  "settings",
+  "api",
+  "oauth",
+  "health",
+  "new",
+  "activity",
+];
 export const REPO_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$/;
 
 /** Why `name` can't be a repo name, or null when it can. */
@@ -151,6 +165,14 @@ export type UpdateRepoInput = {
 };
 
 export type GitScope = "read" | "write";
+
+/** A git credential someone minted (GET /api/repos/:repo/git-credentials, owner only). */
+export type GitGrant = {
+  actor: Actor;
+  scope: GitScope;
+  createdAt: string;
+  expiresAt: string;
+};
 
 /** POST /api/repos/:repo/git-credentials {scope, ttl?} */
 export type GitCredentials = {
@@ -345,6 +367,8 @@ export type PullRow = {
   base: string;
   state: PullState;
   author: string;
+  /** Since 0003_agents: whether `author` is the owner or an agent. */
+  author_kind: ActorKind;
   head_sha: string | null;
   base_sha: string | null;
   merge_sha: string | null;
@@ -363,8 +387,9 @@ export type Pull = {
   head: string;
   base: string;
   state: PullState;
-  /** The owner's handle (or DID) when it was opened. */
+  /** Who opened it: the owner's handle (or DID), or an agent's name. */
   author: string;
+  authorKind: ActorKind;
   headSha: string | null;
   /** While open, base's tip; once merged, base's tip just before the merge. */
   baseSha: string | null;
@@ -385,6 +410,7 @@ export function toPull(row: PullRow): Pull {
     base: row.base,
     state: row.state,
     author: row.author,
+    authorKind: row.author_kind ?? "owner",
     headSha: row.head_sha,
     baseSha: row.base_sha,
     mergeSha: row.merge_sha,
@@ -399,7 +425,13 @@ export function toPull(row: PullRow): Pull {
 /** GET /pulls?state=open|closed|all. `closed` includes merged. */
 export type PullList = { pulls: Pull[]; counts: { open: number; closed: number } };
 
-export type PullComment = { id: number; author: string; body: string; createdAt: string };
+export type PullComment = {
+  id: number;
+  author: string;
+  authorKind: ActorKind;
+  body: string;
+  createdAt: string;
+};
 
 /** POST /pulls/:n/merge, 409: nothing was pushed. */
 export type MergeConflict = { error: string; status: "conflict"; files: string[]; diff: string };
@@ -416,6 +448,9 @@ export type RunRow = {
   sha: string;
   pull_number: number | null;
   status: RunStatus;
+  /** Who started a manual run (null for push and pull_request runs). */
+  actor: string | null;
+  actor_kind: ActorKind | null;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
@@ -475,6 +510,8 @@ export type Run = {
   sha: string;
   pullNumber: number | null;
   status: RunStatus;
+  /** Who started it by hand; null when an event started it. */
+  actor: Actor | null;
   createdAt: string;
   startedAt: string | null;
   finishedAt: string | null;
@@ -503,6 +540,7 @@ export function toRun(row: RunRow): Run {
     sha: row.sha,
     pullNumber: row.pull_number,
     status: row.status,
+    actor: row.actor ? { kind: row.actor_kind ?? "owner", name: row.actor } : null,
     createdAt: row.created_at,
     startedAt: row.started_at,
     finishedAt: row.finished_at,
@@ -527,10 +565,21 @@ export function toRunStep(row: RunStepRow): RunStep {
 export type ApiTokenInfo = {
   id: string;
   name: string;
+  /** The agent the token acts as; null for the owner's own scripts. */
+  agent: string | null;
+  scope: "read" | "write";
   prefix: string;
   createdAt: string;
   expiresAt: string;
   lastUsedAt: string | null;
+};
+
+/** POST /api/tokens {name, days, agent?, scope?} */
+export type CreateApiTokenInput = {
+  name: string;
+  days: number;
+  agent?: string | null;
+  scope?: "read" | "write";
 };
 
 /** POST /api/tokens: the secret appears in this response only. */
@@ -546,3 +595,27 @@ export type InstanceSettings = {
   /** True when CF_API_TOKEN is set, so new repos get push event subscriptions. */
   pushEvents: boolean;
 };
+
+// --- Required checks (/api/repos/:repo/checks, /pulls/:n/checks) -------------
+
+/** A required workflow on a pull request's head, by its latest run there. */
+export type CheckStatus = "success" | "failure" | "pending" | "missing";
+
+export type RequiredCheck = {
+  workflow: string;
+  status: CheckStatus;
+  /** The latest run of this workflow on the head commit. */
+  runNumber?: number;
+};
+
+/** GET /pulls/:n/checks; also the `checks` of a 409 from merge. */
+export type ChecksEvaluation = {
+  /** The commit the checks are for (the pull request's head). */
+  sha: string | null;
+  required: RequiredCheck[];
+  /** True when every required workflow's latest run succeeded (or none is required). */
+  satisfied: boolean;
+};
+
+/** GET/PUT /checks/required?branch= */
+export type RequiredChecks = { branch: string; workflows: string[] };

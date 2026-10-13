@@ -149,7 +149,7 @@ export function defineMycelium({ dir, entrypoint }: { dir: string; entrypoint?: 
         // runWorkerFirst claims the API paths so they reach the Worker instead.
         assets: {
           notFoundHandling: "single-page-application",
-          runWorkerFirst: ["/api/*", "/oauth/*", "/health"],
+          runWorkerFirst: ["/api/*", "/oauth/*", "/health", "/mcp"],
         },
 
         // Secrets (SETUP_CODE, OAUTH_SIGNING_KEY, CF_API_TOKEN) are optional
@@ -170,6 +170,8 @@ export function defineMycelium({ dir, entrypoint }: { dir: string; entrypoint?: 
             worker: mycelium.worker,
             exportName: "RunnerContainer",
           }),
+          // Live updates: one WebSocket hub per repo and one for the instance.
+          LIVE: bindings.durableObject({ worker: mycelium.worker, exportName: "LiveHub" }),
           INSTANCE_TITLE: bindings.text(mycelium.title ?? DEFAULTS.title),
         },
 
@@ -180,6 +182,7 @@ export function defineMycelium({ dir, entrypoint }: { dir: string; entrypoint?: 
 
         exports: {
           RunnerContainer: exports.durableObject({ storage: "sqlite", container: runner }),
+          LiveHub: exports.durableObject({ storage: "sqlite" }),
         },
       },
       containers: [runner],

@@ -1,10 +1,21 @@
 <script lang="ts">
   import { CopyButton, EmptyState, Section } from "@mycelium/ui";
+  import { invalidateAll } from "$app/navigation";
   import CodeTree from "$lib/CodeTree.svelte";
+  import { debounce, onLive } from "$lib/live.svelte";
 
   let { data } = $props();
 
   let owner = $derived(data.status?.signedIn ?? false);
+
+  // Live: a push to the branch shown here (or any, while empty) reloads it.
+  const reload = debounce(() => invalidateAll());
+  $effect(() => {
+    const ref = data.ref;
+    return onLive(data.repo.name, ["push"], (m) => {
+      if (!m || m.type !== "push" || !ref || m.ref === `refs/heads/${ref}`) reload();
+    });
+  });
   let settings = $derived(`/${data.repo.name}/settings`);
   let pushCommands = $derived(
     `git remote add origin ${data.repo.remote}\n` +

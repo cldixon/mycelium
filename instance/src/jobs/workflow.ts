@@ -11,6 +11,7 @@ import type {
   WorkflowStepResult,
 } from "../shared/jobs.js";
 import type { RunRow, RunStatus, RunStepRow, StepStatus } from "../shared/types.js";
+import { publishRun } from "../live/publish.js";
 
 /** Each step's stored log keeps at most this many characters (the tail). */
 export const MAX_LOG_CHARS = 64 * 1024;
@@ -182,6 +183,7 @@ export async function runWorkflow(env: Bindings, runId: number): Promise<void> {
       )
       .bind(new Date(started).toISOString(), runId),
   ]);
+  await publishRun(env, run, "running", { idx: 0, status: "running" }); // Live updates
 
   // Progress from the runner, written as it changes (a failed write only
   // delays what the run page shows; the final write below is what counts).
@@ -194,6 +196,13 @@ export async function runWorkflow(env: Bindings, runId: number): Promise<void> {
       written.clear();
       console.warn(`mycelium: run ${runId} progress not written`, error);
     });
+    // Live updates: the run page reloads on each (a step started, ended or logged more).
+    const moved = rows.at(-1);
+    if (moved) {
+      await publishRun(env, run, "running", { idx: moved.idx, status: moved.status }).catch(
+        () => {},
+      );
+    }
   };
 
   let result: WorkflowResult;
@@ -221,6 +230,7 @@ export async function runWorkflow(env: Bindings, runId: number): Promise<void> {
       .prepare("UPDATE runs SET status = ?, finished_at = ? WHERE id = ? AND status = 'running'")
       .bind(applied.status, finished, runId),
   ]);
+  await publishRun(env, run, applied.status);
   console.log(
     `mycelium: run ${run.repo}#${run.number} ${applied.status} in ${Date.now() - started} ms`,
   );

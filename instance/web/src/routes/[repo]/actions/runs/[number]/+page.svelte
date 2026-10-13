@@ -4,6 +4,7 @@
   import { page } from "$app/state";
   import type { RunDetail } from "$shared/types";
   import {
+    Actor,
     Button,
     Loading,
     LogView,
@@ -15,6 +16,7 @@
     shortSha,
   } from "@mycelium/ui";
   import { actions, duration, isActive, poll } from "$lib/actions";
+  import { debounce, liveFeed, onLive } from "$lib/live.svelte";
 
   let { data } = $props();
   let repo = $derived(data.repo.name);
@@ -40,7 +42,19 @@
 
   onMount(() => {
     load();
-    return poll(load, () => (run ? isActive(run.status) : false), 1500);
+    // Polling is the fallback while the live socket is down.
+    return poll(
+      load,
+      () => liveFeed(repo).status !== "live" && (run ? isActive(run.status) : false),
+      1500,
+    );
+  });
+  $effect(() => {
+    const n = number;
+    const reload = debounce(load, 150);
+    return onLive(repo, ["run"], (m) => {
+      if (!m || (m.type === "run" && m.number === n)) reload();
+    });
   });
 
   async function rerun() {
@@ -97,6 +111,11 @@
         { label: "Duration", value: duration(run.startedAt, run.finishedAt, now), mono: true },
       ]}
     />
+    {#if run.actor}
+      <p class="text-meta text-muted">
+        Started by <Actor name={run.actor.name} kind={run.actor.kind} />
+      </p>
+    {/if}
 
     <section class="grid gap-2" aria-label="Steps">
       <h2 class="text-title font-semibold">Steps</h2>

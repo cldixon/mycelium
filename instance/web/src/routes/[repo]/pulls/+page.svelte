@@ -1,10 +1,19 @@
 <script lang="ts">
-  import { Button, EmptyState, TabNav, personName } from "@mycelium/ui";
+  import { Actor, Button, EmptyState, TabNav, personName } from "@mycelium/ui";
+  import { invalidateAll } from "$app/navigation";
   import { ago } from "$lib/pulls";
+  import { debounce, onLive } from "$lib/live.svelte";
 
   let { data } = $props();
-  const who = (author: string) =>
-    personName(author, { did: data.status?.owner, handle: data.status?.handle });
+  /** The owner by handle (else short DID); agents by their own name. */
+  const who = (author: string, kind?: string) =>
+    kind === "agent"
+      ? author
+      : personName(author, { did: data.status?.owner, handle: data.status?.handle });
+
+  // Live: any pull request event reloads the list.
+  const reload = debounce(() => invalidateAll());
+  $effect(() => onLive(data.repo.name, ["pull"], reload));
 
   let root = $derived(`/${data.repo.name}/pulls`);
   let tabs = $derived([
@@ -39,7 +48,7 @@
           <p class="text-meta text-muted">
             #{pull.number} · <span class="data">{pull.head}</span> into
             <span class="data">{pull.base}</span> · opened {ago(pull.createdAt)} by
-            {who(pull.author)}
+            <Actor name={who(pull.author, pull.authorKind)} kind={pull.authorKind} />
             {#if pull.mergedAt}· merged {ago(pull.mergedAt)}{:else if pull.closedAt}· closed {ago(
                 pull.closedAt,
               )}{/if}
