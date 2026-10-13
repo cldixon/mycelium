@@ -185,6 +185,122 @@ export type PushCommit = {
 
 // --- Actions (/api/repos/:repo/runs, workflows) ------------------------------
 
+export type RunRow = {
+  id: number;
+  repo: string;
+  number: number;
+  workflow: string;
+  event: RunEvent;
+  ref: string;
+  sha: string;
+  pull_number: number | null;
+  status: RunStatus;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+};
+
+export type RunStepRow = {
+  run_id: number;
+  idx: number;
+  name: string;
+  command: string;
+  status: StepStatus;
+  exit_code: number | null;
+  log: string;
+  started_at: string | null;
+  finished_at: string | null;
+};
+
+/** One step of a workflow file. */
+export type WorkflowStep = {
+  name: string;
+  run: string;
+  /** Per-step cap in seconds (from `timeout-minutes`), if the file sets one. */
+  timeoutSec?: number;
+};
+
+/** A parsed `.mycelium/workflows/*.yml` file. */
+export type Workflow = {
+  /** Path in the repo, e.g. ".mycelium/workflows/test.yml". */
+  path: string;
+  /** `name:`, or the file name without its extension. Runs are keyed by it. */
+  name: string;
+  /** Events that start it. `manual` is always allowed and not listed unless the file says so. */
+  on: RunEvent[];
+  steps: WorkflowStep[];
+  /** Whole-run cap in seconds (from `timeout-minutes`). */
+  timeoutSec: number;
+};
+
+/** A workflow file that didn't parse or validate. */
+export type WorkflowError = { path: string; error: string };
+
+/** GET /api/repos/:repo/workflows?ref= */
+export type WorkflowList = {
+  ref: string;
+  sha: string;
+  workflows: Workflow[];
+  errors: WorkflowError[];
+};
+
+/** A run as the API returns it. */
+export type Run = {
+  number: number;
+  workflow: string;
+  event: RunEvent;
+  /** Branch name (or "refs/..." for anything else), as triggered. */
+  ref: string;
+  sha: string;
+  pullNumber: number | null;
+  status: RunStatus;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+};
+
+export type RunStep = {
+  idx: number;
+  name: string;
+  command: string;
+  status: StepStatus;
+  exitCode: number | null;
+  log: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+};
+
+/** GET /api/repos/:repo/runs/:n */
+export type RunDetail = Run & { steps: RunStep[] };
+
+export function toRun(row: RunRow): Run {
+  return {
+    number: row.number,
+    workflow: row.workflow,
+    event: row.event,
+    ref: row.ref,
+    sha: row.sha,
+    pullNumber: row.pull_number,
+    status: row.status,
+    createdAt: row.created_at,
+    startedAt: row.started_at,
+    finishedAt: row.finished_at,
+  };
+}
+
+export function toRunStep(row: RunStepRow): RunStep {
+  return {
+    idx: row.idx,
+    name: row.name,
+    command: row.command,
+    status: row.status,
+    exitCode: row.exit_code,
+    log: row.log,
+    startedAt: row.started_at,
+    finishedAt: row.finished_at,
+  };
+}
+
 // --- Settings (/api/tokens) --------------------------------------------------
 
 export type ApiTokenInfo = {
