@@ -66,15 +66,17 @@ export async function claimOwnership(db: D1Database, did: string): Promise<strin
 const OWNER_HANDLE = "owner_handle";
 const OWNER_HANDLE_CHECKED = "owner_handle_checked_at";
 const HANDLE_TTL_MS = 24 * 60 * 60 * 1000;
+const RETRY_AFTER_FAILURE_MS = 5 * 60 * 1000;
 
 /**
  * The owner's handle, for display (`handle / repo`). Read from the owner's
  * DID document and cached for a day. Falls back to the cached value, or null,
- * if the DID can't be resolved.
+ * if the DID can't be resolved. `refresh` skips the cache (sign-in does, so a
+ * changed handle shows at once).
  */
 export async function getOwnerHandle(
   db: D1Database,
-  options: IdentityOptions = {},
+  { refresh = false, ...options }: IdentityOptions & { refresh?: boolean } = {},
 ): Promise<string | null> {
   const did = await getOwner(db);
   if (!did) return null;
@@ -82,13 +84,17 @@ export async function getOwnerHandle(
     getSetting(db, OWNER_HANDLE),
     getSetting(db, OWNER_HANDLE_CHECKED),
   ]);
-  if (cached && checkedAt && Date.now() - Date.parse(checkedAt) < HANDLE_TTL_MS) return cached;
+  const fresh = checkedAt && Date.now() - Date.parse(checkedAt) < HANDLE_TTL_MS;
+  if (fresh && !refresh) return cached;
   try {
     const { handle } = await resolveDid(did, { timeoutMs: 3000, ...options });
     await setSetting(db, OWNER_HANDLE_CHECKED, new Date().toISOString());
     if (handle) await setSetting(db, OWNER_HANDLE, handle);
     return handle ?? cached;
   } catch {
+    // Try again in a few minutes, not on every request meanwhile.
+    const retryAt = Date.now() - HANDLE_TTL_MS + RETRY_AFTER_FAILURE_MS;
+    await setSetting(db, OWNER_HANDLE_CHECKED, new Date(retryAt).toISOString()).catch(() => {});
     return cached;
   }
 }

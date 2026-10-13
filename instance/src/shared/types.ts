@@ -401,9 +401,6 @@ export type PullList = { pulls: Pull[]; counts: { open: number; closed: number }
 
 export type PullComment = { id: number; author: string; body: string; createdAt: string };
 
-/** GET /pulls/branches: what a pull request can compare. */
-export type PullBranches = { defaultBranch: string; branches: RefInfo[] };
-
 /** POST /pulls/:n/merge, 409: nothing was pushed. */
 export type MergeConflict = { error: string; status: "conflict"; files: string[]; diff: string };
 

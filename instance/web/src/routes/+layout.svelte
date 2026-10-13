@@ -2,7 +2,7 @@
   import "../app.css";
   import { page } from "$app/state";
   import { goto, invalidate } from "$app/navigation";
-  import { AccountMenu, NavLink, Shell, type MenuItem } from "@mycelium/ui";
+  import { AccountMenu, NavLink, Shell, personName, type MenuItem } from "@mycelium/ui";
   import { auth } from "$lib/api";
 
   let { data, children } = $props();
@@ -10,7 +10,9 @@
   let title = $derived(data.status?.title || "mycelium");
   let signedIn = $derived(data.status?.signedIn ?? false);
   let handle = $derived(
-    data.status?.handle ? `@${data.status.handle}` : (data.status?.owner ?? "owner"),
+    data.status?.owner
+      ? personName(data.status.owner, { did: data.status.owner, handle: data.status.handle })
+      : "owner",
   );
 
   async function signOut() {

@@ -82,7 +82,9 @@ subscriptions). Text vars: `INSTANCE_TITLE`.
 ## Auth (copied from igloo)
 
 - AT Protocol OAuth is the only browser sign-in. A one-time setup code claims ownership; the owner
-  DID is stored in `settings`.
+  DID is stored in `settings`. The owner's handle is resolved from the DID document and cached in
+  `settings` (`getOwnerHandle`: a day, refreshed at sign-in, retried 5 minutes after a failure).
+  The UI shows people with `personName` (`@mycelium/ui`): the handle, else the DID shortened.
 - Session cookie `mycelium_session` (sha256 stored in `web_sessions`).
 - API tokens (`myc_<hex>`, sha256 stored, always expiring) for scripts and agents:
   `Authorization: Bearer`. `requireOwner` accepts either.
@@ -128,9 +130,10 @@ repo, kind)` in `src/db/migrations.ts` claims the next number atomically.
 
 The Worker calls the container through `instance/src/runner.ts`:
 `runJob(env, key, job)` → `POST http://runner/jobs` → JSON result. `key` picks the instance
-(use `repo` so one repo's jobs share a warm container). The Worker mints tokens with the binding
-before every job and passes `remotes: [{ name, url, token }]`; the container never sees an
-account credential.
+(use `repo` so one repo's jobs share a warm container). The Worker passes repo-scoped tokens as
+`remotes: [{ name, url, token }]`; the container never sees an account credential. Read tokens
+come from `repoToken` (`git/artifacts.ts`): minted for an hour and reused by the isolate while
+enough of that is left (also for `/refs` listings); write tokens are minted per job.
 
 ```ts
 type Job =
@@ -141,8 +144,9 @@ type Job =
       method: "merge" | "squash" | "rebase"; message: string; author: { name: string; email: string } }
       // (+ optional headSha: refuse if head moved)
       // → { status: "merged", sha, baseSha, headSha } | { status: "conflict", files: string[], diff: string }
+      // rebase also moves head to the rebased commits (--force-with-lease on headSha; best effort)
   | { type: "workflow"; remotes; repo: string; sha: string; steps: { name: string; run: string }[];
-      timeoutSec: number }
+      timeoutSec: number; id?: string }
       // → { status: "success" | "failure" | "error", steps: { exitCode, log, durationMs }[] }
 ```
 
@@ -150,11 +154,24 @@ Besides the three jobs above there is `{ type: "ping" }` → `{ ok, git, bun }` 
 in `instance/src/shared/jobs.ts`. On failure the runner answers `{ error }` with a 4xx/5xx and
 `runJob` throws `RunnerError`.
 
+**Background workflow jobs (streamed step logs).** A workflow job with an `id` (the Worker uses
+`run-<runs.id>`) runs in the background: `POST /jobs` answers `202` with a `JobStatus` at once
+(`{ id, done, progress: { steps: finished results, current: { startedAt, log } | null }, result? }`),
+and `GET /jobs/:id` answers the same while it runs and for 10 minutes after. Posting an id the
+container already has returns that job (a redelivered queue message picks it up again). The
+queue consumer (`jobs/workflow.ts`) polls the same container instance every second and writes
+step rows that changed (`pending → running → success/failure`, log tails) to `run_steps`; the
+run page polls the run. If the container restarts mid-run, `GET` answers 404 and the run ends as
+`error`, keeping the steps that finished.
+
 `runner/src/jobs/<type>.ts` exports a handler; `runner/src/server.ts` dispatches by `type` from
 a registry (`runner/src/jobs/index.ts`). Shared helper `runner/src/git.ts` sets up a scratch repo
 with one remote per entry (per-remote `http.<url>.extraHeader`), with clones cached on disk by
-repo while the container stays warm. Image: Debian `node:22` from `mirror.gcr.io` with git, plus
-bun copied in (Docker Hub is rate-limited from our dev environment).
+repo while the container stays warm: a job fetches only what changed, and a workflow on a commit
+the clone already has (a re-run) fetches nothing. Image: Debian `buildpack-deps:bookworm-scm`
+(git, curl, CA certificates) with node copied from `node:22-bookworm-slim` and bun copied in,
+all from `mirror.gcr.io` (Docker Hub is rate-limited from our dev environment; Debian package
+mirrors are blocked there, so the image installs no packages). ~225 MB, half of `node:22`.
 
 ## Workflows ("Actions")
 
@@ -172,8 +189,14 @@ steps:
 
 Push event (or PR open/update, or "Run" in the UI) → instance reads workflow files at that sha
 through the binding → inserts `runs` + `run_steps` (status `queued`) → sends `{ runId }` to the
-`JOBS` queue → queue consumer marks `running`, calls the runner `workflow` job, writes step
-results and final status. The PR page shows the latest run per workflow for the PR's head sha.
+`JOBS` queue → queue consumer marks `running`, starts the runner `workflow` job in the background,
+writes step progress as it polls, then the step results and final status. The PR page shows the
+latest run per workflow for the PR's head sha.
+
+`on: push` covers branch and tag pushes, like GitHub: a branch push runs with `ref` = the branch
+name, a tag push with `ref` = `refs/tags/<name>` at the commit the tag points at (annotated tags
+are peeled). Pushes are stored once per (repo, ref, after), so a tag on an already-pushed commit
+still counts.
 
 ## Diffs
 
@@ -231,7 +254,7 @@ GET  /api/repos/:repo/pulls?state=           POST /api/repos/:repo/pulls
 GET  /api/repos/:repo/pulls/:n               PATCH (title, body, state)   GET .../diff
 POST /api/repos/:repo/pulls/:n/merge {method, message?, headSha?}  (409 + files/diff on conflict)
 GET/POST /api/repos/:repo/pulls/:n/comments {body}
-GET  /api/repos/:repo/pulls/branches         GET /api/repos/:repo/pulls/compare?base=&head=
+GET  /api/repos/:repo/pulls/compare?base=&head=   (branch pickers use GET /refs)
 GET  /api/repos/:repo/runs                   POST /api/repos/:repo/runs {workflow, ref}
 GET  /api/repos/:repo/runs/:n                GET /api/repos/:repo/workflows
 GET  /api/tokens · POST /api/tokens · DELETE /api/tokens/:id

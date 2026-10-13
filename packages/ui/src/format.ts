@@ -65,6 +65,23 @@ export function shortDid(did: string): string {
   return `${scheme}:${method}:${id.slice(0, 6)}…${id.slice(-2)}`;
 }
 
+/**
+ * A person as stored (a DID, or an AT Protocol handle) for display: the
+ * owner's DID as their handle when it is known, any handle as `@handle`,
+ * any other DID shortened. Anything else (e.g. an agent's name) as is.
+ */
+export function personName(
+  who: string,
+  owner?: { did?: string | null; handle?: string | null } | null,
+): string {
+  const handle = owner?.handle?.replace(/^@/, "") || null;
+  if (who.startsWith("did:")) {
+    return who === owner?.did && handle ? `@${handle}` : shortDid(who);
+  }
+  const bare = who.replace(/^@/, "");
+  return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(bare) ? `@${bare}` : who;
+}
+
 /** A git sha shortened for display: 9f2c3a1. */
 export function shortSha(sha: string, length = 7): string {
   return sha.slice(0, length);

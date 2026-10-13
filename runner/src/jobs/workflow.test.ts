@@ -96,4 +96,51 @@ describe("workflow job", () => {
     expect(r.steps[0]!.log).toContain("not kept");
     expect(r.steps[0]!.log.trimEnd().endsWith("40000")).toBe(true);
   });
+
+  test("a re-run of a commit the clone has doesn't fetch", async () => {
+    const { WORK_DIR, gitIn, hasCommits } = await import("../git.ts");
+    const clone = gitIn(join(WORK_DIR, "demo"));
+    expect(await hasCommits(clone, [sha])).toBe(true);
+    expect(await hasCommits(clone, ["1".repeat(40)])).toBe(false);
+    // An unreachable remote: works only because nothing is fetched.
+    const r = await workflow({
+      ...job([{ name: "x", run: "true" }]),
+      remotes: [{ name: "demo", url: join(origin, "gone"), token: "t" }],
+    });
+    expect(r.status).toBe("success");
+  });
+
+  test("background jobs report progress while they run", async () => {
+    const { startBackground, backgroundStatus } = await import("../background.ts");
+    const id = `t-${Date.now()}`;
+    const bg = {
+      ...job([
+        { name: "one", run: "echo first" },
+        { name: "two", run: "echo tick; sleep 1.5; echo tock" },
+      ]),
+      id,
+    };
+    const first = startBackground(bg, workflow);
+    expect(first.done).toBe(false);
+    // the same id again is the same job
+    expect(startBackground(bg, workflow).id).toBe(id);
+    let seen = false;
+    for (let i = 0; i < 100; i++) {
+      const s = backgroundStatus(id)!;
+      if (s.done) break;
+      if (s.progress.current && s.progress.current.log.includes("tick")) {
+        expect(s.progress.steps).toHaveLength(1);
+        expect(s.progress.current.log).not.toContain("tock");
+        seen = true;
+      }
+      await Bun.sleep(50);
+    }
+    expect(seen).toBe(true);
+    for (let i = 0; i < 100 && !backgroundStatus(id)!.done; i++) await Bun.sleep(50);
+    const end = backgroundStatus(id)!;
+    expect(end.done && end.result.status).toBe("success");
+    expect(end.progress.current).toBeNull();
+    expect(end.progress.steps[1]!.log).toContain("tock");
+    expect(backgroundStatus("nope")).toBeNull();
+  });
 });

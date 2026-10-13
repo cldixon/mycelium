@@ -85,14 +85,6 @@ async function ownerName(c: C): Promise<string> {
   return (await getOwnerHandle(c.get("db"))) ?? c.get("ownerDid");
 }
 
-/** Branches to compare (the Code feature's /refs also lists them; this keeps pulls standalone). */
-pullsRoute.get("/pulls/branches", async (c) => {
-  const row = await readable(c);
-  if (!row) return notFound(c);
-  const refs = await repoRefs(c.env, row);
-  return c.json({ defaultBranch: refs.head ?? row.default_branch, branches: refs.branches });
-});
-
 /** Preview a pull request before opening it: ?base=&head= */
 pullsRoute.get("/pulls/compare", async (c) => {
   const row = await readable(c);

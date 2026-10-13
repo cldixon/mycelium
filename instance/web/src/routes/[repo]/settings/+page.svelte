@@ -16,7 +16,7 @@
   let description = $state(initial.description ?? "");
   let visibility = $state<Visibility>(initial.visibility);
   let defaultBranch = $state(initial.defaultBranch);
-  /** Branch names from /refs; null when unavailable (free text then). */
+  /** Branch names from /refs; null until loaded (or when unavailable). */
   let branches = $state<string[] | null>(null);
   let saving = $state(false);
   let saveError = $state<string | null>(null);
@@ -120,16 +120,17 @@
           label="Default branch"
           hint="The branch the Code tab shows and pull requests target by default."
         >
-          {#if branches && branches.length > 0}
-            <select class="input" bind:value={defaultBranch}>
-              {#if !branches.includes(defaultBranch)}
-                <option value={defaultBranch}>{defaultBranch}</option>
-              {/if}
-              {#each branches as b (b)}<option value={b}>{b}</option>{/each}
-            </select>
-          {:else}
-            <input class="input" bind:value={defaultBranch} spellcheck="false" />
-          {/if}
+          <!-- Branches from GET /refs; until there are any, the current name only. -->
+          <select
+            class="input"
+            bind:value={defaultBranch}
+            disabled={!branches || branches.length === 0}
+          >
+            {#if !branches?.includes(defaultBranch)}
+              <option value={defaultBranch}>{defaultBranch}</option>
+            {/if}
+            {#each branches ?? [] as b (b)}<option value={b}>{b}</option>{/each}
+          </select>
         </Field>
         {#if saveError}<Notice tone="error">{saveError}</Notice>{/if}
         {#if saved && !dirty}<Notice tone="success">Saved.</Notice>{/if}

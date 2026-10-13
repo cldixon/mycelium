@@ -10,6 +10,7 @@
     PageHeader,
     Readme,
     TabNav,
+    personName,
     plural,
   } from "@mycelium/ui";
   import { ago, pulls } from "$lib/pulls";
@@ -18,6 +19,8 @@
   import MergeBox from "../MergeBox.svelte";
 
   let { data } = $props();
+  const who = (author: string) =>
+    personName(author, { did: data.status?.owner, handle: data.status?.handle });
 
   let repo = $derived(data.repo.name);
   let pull = $derived(data.pull);
@@ -78,7 +81,7 @@
   <PageHeader title="{pull.title} #{pull.number}">
     {#snippet status()}<span class="eyebrow">{pull.state}</span>{/snippet}
     {#snippet meta()}
-      {pull.author}
+      {who(pull.author)}
       {#if pull.state === "merged"}
         merged <span class="data">{pull.head}</span> into <span class="data">{pull.base}</span>
         {pull.mergedAt ? ago(pull.mergedAt) : ""}
@@ -97,7 +100,7 @@
   {#if data.tab === "conversation"}
     <div class="grid max-w-reading gap-4">
       <article class="grid gap-2 border-b border-line-soft pb-4">
-        <p class="text-meta text-muted">{pull.author} · {ago(pull.createdAt)}</p>
+        <p class="text-meta text-muted">{who(pull.author)} · {ago(pull.createdAt)}</p>
         {#if pull.body.trim()}
           <Readme markdown={pull.body} />
         {:else}
@@ -107,7 +110,7 @@
 
       {#each data.comments as c (c.id)}
         <article class="grid gap-2 border-b border-line-soft pb-4">
-          <p class="text-meta text-muted">{c.author} · {ago(c.createdAt)}</p>
+          <p class="text-meta text-muted">{who(c.author)} · {ago(c.createdAt)}</p>
           <Readme markdown={c.body} />
         </article>
       {/each}

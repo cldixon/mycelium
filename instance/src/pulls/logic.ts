@@ -47,7 +47,14 @@ export function ownerIdentity(
 ): { name: string; email: string } {
   const local =
     (handle ?? did).replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "owner";
-  return { name: handle ?? did, email: `${local}@${host}` };
+  return { name: handle ?? shortDid(did), email: `${local}@${host}` };
+}
+
+/** A DID shortened for display (as @mycelium/ui shortDid): did:plc:7k3bqz…9x */
+export function shortDid(did: string): string {
+  const [scheme, method, id] = did.split(":");
+  if (!id || id.length <= 10) return did;
+  return `${scheme}:${method}:${id.slice(0, 6)}…${id.slice(-2)}`;
 }
 
 /** A branch name a pull request may use: like git's check-ref-format, roughly. */

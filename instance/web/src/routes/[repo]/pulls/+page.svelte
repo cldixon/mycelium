@@ -1,8 +1,10 @@
 <script lang="ts">
-  import { Button, EmptyState, TabNav } from "@mycelium/ui";
+  import { Button, EmptyState, TabNav, personName } from "@mycelium/ui";
   import { ago } from "$lib/pulls";
 
   let { data } = $props();
+  const who = (author: string) =>
+    personName(author, { did: data.status?.owner, handle: data.status?.handle });
 
   let root = $derived(`/${data.repo.name}/pulls`);
   let tabs = $derived([
@@ -37,7 +39,7 @@
           <p class="text-meta text-muted">
             #{pull.number} · <span class="data">{pull.head}</span> into
             <span class="data">{pull.base}</span> · opened {ago(pull.createdAt)} by
-            {pull.author}
+            {who(pull.author)}
             {#if pull.mergedAt}· merged {ago(pull.mergedAt)}{:else if pull.closedAt}· closed {ago(
                 pull.closedAt,
               )}{/if}

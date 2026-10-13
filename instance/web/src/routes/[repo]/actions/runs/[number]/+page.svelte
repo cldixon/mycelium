@@ -40,7 +40,7 @@
 
   onMount(() => {
     load();
-    return poll(load, () => (run ? isActive(run.status) : false), 2000);
+    return poll(load, () => (run ? isActive(run.status) : false), 1500);
   });
 
   async function rerun() {
@@ -124,7 +124,7 @@
             <LogView
               log={step.log}
               empty={step.status === "running"
-                ? "Running… output appears when the run finishes."
+                ? "Running… no output yet."
                 : step.status === "pending" || step.status === "skipped"
                   ? "Didn't run."
                   : "No output."}

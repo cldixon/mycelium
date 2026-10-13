@@ -4,11 +4,20 @@ import { createTestD1 } from "@mycelium/platform/testing";
 import { app } from "../api/app.js";
 import type { Bindings } from "../api/bindings.js";
 import { getDb } from "../db/migrations.js";
-import { applyResult, runWorkflow, tailLog } from "../jobs/workflow.js";
-import type { Workflow } from "../shared/types.js";
+import {
+  applyResult,
+  changedRows,
+  execute,
+  progressRows,
+  runWorkflow,
+  tailLog,
+  type RunnerClient,
+} from "../jobs/workflow.js";
+import type { JobStatus, WorkflowJob, WorkflowProgress } from "../shared/jobs.js";
+import type { RunRow, Workflow } from "../shared/types.js";
 import { readWorkflows, type TreeReader } from "./load.js";
 import { parseWorkflow, runsOn, WorkflowParseError } from "./parse.js";
-import { createRuns, pushedBranch, triggerPushRuns, workflowsFor } from "./triggers.js";
+import { createRuns, pushedBranch, pushTarget, triggerPushRuns, workflowsFor } from "./triggers.js";
 
 const P = ".mycelium/workflows/test.yml";
 
@@ -98,6 +107,126 @@ describe("trigger matching", () => {
     expect(pushedBranch({ ref: "refs/heads/main", after: "0".repeat(40) })).toBeNull();
     expect(pushedBranch({ ref: "refs/heads/main", after: null })).toBeNull();
     expect(pushedBranch({ ref: "refs/tags/v1", after: "a".repeat(40) })).toBeNull();
+  });
+
+  test("branch and tag pushes are push targets; deletions and other refs aren't", () => {
+    const a = "a".repeat(40);
+    expect(pushTarget({ ref: "refs/heads/feat/x", after: a })).toEqual({
+      kind: "branch",
+      ref: "feat/x",
+    });
+    expect(pushTarget({ ref: "refs/tags/v1.2", after: a })).toEqual({
+      kind: "tag",
+      ref: "refs/tags/v1.2",
+    });
+    expect(pushTarget({ ref: "refs/tags/v1.2", after: "0".repeat(40) })).toBeNull();
+    expect(pushTarget({ ref: "refs/tags/", after: a })).toBeNull();
+    expect(pushTarget({ ref: "refs/notes/commits", after: a })).toBeNull();
+  });
+});
+
+describe("progress", () => {
+  const steps = [{ idx: 0 }, { idx: 1 }, { idx: 2 }];
+  const t0 = Date.parse("2026-01-01T00:00:00Z");
+
+  test("checking out: nothing to write yet", () => {
+    expect(progressRows(steps, { steps: [], current: null }, t0)).toEqual([]);
+  });
+
+  test("finished steps and the running one; later steps stay pending", () => {
+    const rows = progressRows(
+      steps,
+      {
+        steps: [
+          { exitCode: 0, log: "one\n", durationMs: 1500, startedAt: "2026-01-01T00:00:01.000Z" },
+        ],
+        current: { startedAt: "2026-01-01T00:00:02.600Z", log: "tick 1\n" },
+      },
+      t0,
+    );
+    expect(rows).toEqual([
+      {
+        idx: 0,
+        status: "success",
+        exitCode: 0,
+        log: "one\n",
+        startedAt: "2026-01-01T00:00:01.000Z",
+        finishedAt: "2026-01-01T00:00:02.500Z",
+      },
+      {
+        idx: 1,
+        status: "running",
+        exitCode: null,
+        log: "tick 1\n",
+        startedAt: "2026-01-01T00:00:02.600Z",
+        finishedAt: null,
+      },
+    ]);
+  });
+
+  test("changedRows writes only what moved", () => {
+    const written = new Map<number, string>();
+    const at = (log: string) =>
+      progressRows(steps, { steps: [], current: { startedAt: "x", log } }, t0);
+    expect(changedRows(written, at("a"))).toHaveLength(1);
+    expect(changedRows(written, at("a"))).toHaveLength(0);
+    expect(changedRows(written, at("ab"))[0]!.log).toBe("ab");
+  });
+
+  test("execute polls the runner and hands over each answer's progress", async () => {
+    const progress = (n: number): WorkflowProgress => ({
+      steps: [],
+      current: { startedAt: "2026-01-01T00:00:00Z", log: "x".repeat(n) },
+    });
+    const answers: JobStatus[] = [
+      { id: "run-7", done: false, progress: progress(2) },
+      {
+        id: "run-7",
+        done: true,
+        progress: { steps: [], current: null },
+        result: {
+          status: "success",
+          steps: [{ exitCode: 0, log: "xxx", durationMs: 1 }],
+        },
+      },
+    ];
+    const seen: number[] = [];
+    let started: (WorkflowJob & { id: string }) | null = null;
+    const runner: RunnerClient = {
+      remotesFor: async () => [{ name: "demo", url: "u", token: "t" }],
+      startJob: async (_env, _key, job) => {
+        started = job;
+        return { id: job.id, done: false, progress: progress(1) };
+      },
+      jobStatus: async () => answers.shift() ?? null,
+    };
+    const t = await createTestD1();
+    const now = new Date().toISOString();
+    await (
+      await getDb(t.db)
+    )
+      .prepare("INSERT INTO repos (name, remote, created_at, updated_at) VALUES (?, ?, ?, ?)")
+      .bind("demo", "u", now, now)
+      .run();
+    const env = {
+      DB: t.db,
+      ARTIFACTS: {
+        get: async () => {
+          throw new Error("no workflows here");
+        },
+      },
+    } as unknown as Bindings;
+    const result = await execute(
+      env,
+      { id: 7, repo: "demo", sha: "c".repeat(40), workflow: "ci" } as RunRow,
+      [{ idx: 0, name: "s", command: "echo" }],
+      async (p) => void seen.push(p.current?.log.length ?? 0),
+      runner,
+    );
+    expect(started!.id).toBe("run-7");
+    expect(seen).toEqual([1, 2]);
+    expect(result.status).toBe("success");
+    await t.dispose();
   });
 });
 
@@ -268,8 +397,15 @@ describe("runs in D1", () => {
       { idx: 0, name: "one", command: "echo 1", status: "pending" },
       { idx: 1, name: "two", command: "echo 2", status: "pending" },
     ]);
-    // Tag pushes don't run anything.
-    expect(await triggerPushRuns(env, "demo", { ...push, ref: "refs/tags/v1" })).toEqual([]);
+    // Tag pushes run `on: push` too, with the full tag ref; deletions don't.
+    const tagged = await triggerPushRuns(env, "demo", { ...push, ref: "refs/tags/v1" });
+    expect(tagged.map((r) => r.number)).toEqual([2]);
+    const tagRun = await db.prepare("SELECT ref, sha FROM runs WHERE number = 2").first();
+    expect(tagRun).toEqual({ ref: "refs/tags/v1", sha });
+    await db.prepare("DELETE FROM runs WHERE number = 2").run();
+    expect(
+      await triggerPushRuns(env, "demo", { ...push, ref: "refs/tags/v1", after: "0".repeat(40) }),
+    ).toEqual([]);
 
     // Listing and detail (private repo: owner only).
     const res = await app.request(

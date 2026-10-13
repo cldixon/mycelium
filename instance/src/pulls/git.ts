@@ -1,5 +1,5 @@
 import type { Bindings } from "../api/bindings.js";
-import { mintToken } from "../git/artifacts.js";
+import { repoToken } from "../git/artifacts.js";
 import { listRefs } from "../git/refs.js";
 import type { DiffResult, MergeJob, MergeResult } from "../shared/jobs.js";
 import type { Refs, RepoRow } from "../shared/types.js";
@@ -13,7 +13,7 @@ import type { Refs, RepoRow } from "../shared/types.js";
 const runner = () => import("../runner.js");
 
 export async function repoRefs(env: Pick<Bindings, "ARTIFACTS">, row: RepoRow): Promise<Refs> {
-  const { token } = await mintToken(env, row.name, "read", 60);
+  const token = await repoToken(env, row.name);
   return listRefs(row.remote, token);
 }
 

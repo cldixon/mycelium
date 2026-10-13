@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
   WorkflowJob,
+  WorkflowProgress,
   WorkflowResult,
   WorkflowStepResult,
 } from "../../../instance/src/shared/jobs.ts";
@@ -12,19 +13,6 @@ import { setupRepo, sh } from "../git.ts";
 export const MAX_LOG_CHARS = 64 * 1024;
 /** After SIGTERM, a timed-out step's process group gets this long before SIGKILL. */
 const KILL_GRACE_MS = 3000;
-
-/** One repo's fetches at a time: concurrent fetches into one clone collide on git's locks. */
-const locks = new Map<string, Promise<unknown>>();
-async function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-  const prev = locks.get(key) ?? Promise.resolve();
-  const next = prev.catch(() => {}).then(fn);
-  locks.set(key, next);
-  try {
-    return await next;
-  } finally {
-    if (locks.get(key) === next) locks.delete(key);
-  }
-}
 
 /** A growing log that keeps only its tail. */
 class TailBuffer {
@@ -61,9 +49,12 @@ export async function runStep(
   command: string,
   env: Record<string, string>,
   timeoutMs: number,
+  /** Called once at the start with a way to read the output so far. */
+  live?: (startedAt: string, snapshot: () => string) => void,
 ): Promise<WorkflowStepResult> {
   const startedAt = new Date();
   const log = new TailBuffer(MAX_LOG_CHARS);
+  live?.(startedAt.toISOString(), () => log.toString());
   // setsid makes bash the leader of a new process group (pid = pgid), so a
   // timeout can kill everything the step started.
   const proc = Bun.spawn(["setsid", "--wait", "bash", "-lc", command], {
@@ -115,16 +106,23 @@ export async function runStep(
 /**
  * Check out `sha` into a fresh directory (sharing objects with the cached
  * clone) and run the steps in order, stopping at the first failure.
+ * `progress`, when given, is kept up to date as steps start and finish (a
+ * background job's `GET /jobs/:id` reads it).
  */
-export async function workflow(job: WorkflowJob): Promise<WorkflowResult> {
+export async function workflow(
+  job: WorkflowJob,
+  progress: WorkflowProgress = { steps: [], current: null },
+): Promise<WorkflowResult> {
   const t0 = Date.now();
   const deadline = t0 + job.timeoutSec * 1000;
   let dir: string | null = null;
   try {
     dir = await mkdtemp(join(tmpdir(), "run-"));
     const checkout = dir;
-    const err = await withLock(job.repo, async () => {
-      const git = await setupRepo(job.repo, job.remotes);
+    const err = await (async () => {
+      // A commit the cached clone already has (a re-run) needs no fetch. The
+      // checkout is this job's own clone (objects shared), without credentials.
+      const git = await setupRepo(job.repo, job.remotes, { want: [job.sha] });
       const clone = await sh("/", [
         "git",
         "clone",
@@ -138,7 +136,7 @@ export async function workflow(job: WorkflowJob): Promise<WorkflowResult> {
       const co = await sh(checkout, ["git", "checkout", "-q", "--detach", job.sha]);
       if (co.code !== 0) return `checkout of ${job.sha} failed: ${co.err}`;
       return null;
-    });
+    })();
     if (err) return { status: "error", steps: [], error: err };
 
     const env: Record<string, string> = {
@@ -151,7 +149,7 @@ export async function workflow(job: WorkflowJob): Promise<WorkflowResult> {
       MYCELIUM_REPO: job.repo,
       MYCELIUM_SHA: job.sha,
     };
-    const steps: WorkflowStepResult[] = [];
+    const steps = progress.steps;
     for (const step of job.steps) {
       const left = deadline - Date.now();
       if (left <= 0) {
@@ -165,15 +163,24 @@ export async function workflow(job: WorkflowJob): Promise<WorkflowResult> {
         return { status: "failure", steps };
       }
       const cap = step.timeoutSec ? Math.min(step.timeoutSec * 1000, left) : left;
-      const result = await runStep(checkout, step.run, env, cap);
+      const result = await runStep(checkout, step.run, env, cap, (startedAt, snapshot) => {
+        progress.current = {
+          startedAt,
+          get log() {
+            return snapshot();
+          },
+        };
+      });
+      progress.current = null;
       steps.push(result);
       if (result.exitCode !== 0) return { status: "failure", steps };
     }
     return { status: "success", steps };
   } catch (error) {
+    progress.current = null;
     return {
       status: "error",
-      steps: [],
+      steps: progress.steps,
       error: error instanceof Error ? error.message : String(error),
     };
   } finally {

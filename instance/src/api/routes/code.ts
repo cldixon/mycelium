@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { getRepoRow, isArtifactsError, mintToken } from "../../git/artifacts.js";
+import { getRepoRow, isArtifactsError, repoToken } from "../../git/artifacts.js";
 import { listRefs } from "../../git/refs.js";
 import { diffCommitTrees, isBinary } from "../../git/diff.js";
 import { cleanPath } from "../../shared/refpath.js";
@@ -171,7 +171,7 @@ function contentTypeFor(name: string, binary: boolean): string {
  */
 codeRoute.get("/refs", async (c) => {
   const row = await readableRepo(c);
-  const { token } = await mintToken(c.env, row.name, "read", 60).catch((e) => {
+  const token = await repoToken(c.env, row.name).catch((e) => {
     if (isArtifactsError(e, "NOT_FOUND")) throw new HttpError(404, "Repository storage not found");
     throw e;
   });

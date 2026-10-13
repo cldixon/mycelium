@@ -1,5 +1,25 @@
 import { expect, test } from "bun:test";
-import { formatBytes, formatDateTime, plural, shortDid, shortHash, timeAgo } from "./format.js";
+import {
+  formatBytes,
+  formatDateTime,
+  personName,
+  plural,
+  shortDid,
+  shortHash,
+  timeAgo,
+} from "./format.js";
+
+test("people show as handles, else short DIDs", () => {
+  const did = "did:plc:7k3bqzxw4ylmrz2qkdh5u69x";
+  const owner = { did, handle: "alice.example.com" };
+  expect(personName(did, owner)).toBe("@alice.example.com");
+  expect(personName(did, { did, handle: null })).toBe("did:plc:7k3bqz…9x");
+  expect(personName(did)).toBe("did:plc:7k3bqz…9x");
+  expect(personName("did:plc:someoneelsexxxxxxxxxxxxx", owner)).toBe("did:plc:someon…xx");
+  expect(personName("alice.example.com", owner)).toBe("@alice.example.com");
+  expect(personName("@bob.bsky.social")).toBe("@bob.bsky.social");
+  expect(personName("claude (agent)")).toBe("claude (agent)");
+});
 
 test("sizes read like an AutoIndex listing", () => {
   expect(formatBytes(512)).toBe("512B");

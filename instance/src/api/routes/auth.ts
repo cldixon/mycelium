@@ -83,6 +83,8 @@ oauthRoute.get("/callback", async (c) => {
   }
 
   setSessionCookie(c, await createWebSession(db, did));
+  // Cache the handle now, so the first page shows it (fails soft: DID shown).
+  await getOwnerHandle(db, { refresh: true });
   return c.redirect("/");
 });
 
