@@ -30,6 +30,10 @@ export type CommitInfo = {
 export type PingJob = { type: "ping" };
 export type PingResult = { ok: true; git: string; bun: string };
 
+/**
+ * Compare `head` with `base` in the first remote. Each is a branch name of
+ * that remote or a commit sha (merged pull requests are diffed by sha).
+ */
 export type DiffJob = {
   type: "diff";
   remotes: Remote[];
@@ -39,13 +43,31 @@ export type DiffJob = {
 };
 export type DiffResult = {
   mergeBase: string;
+  /** Commits on head that base doesn't have. */
   ahead: number;
+  /** Commits on base that head doesn't have. */
   behind: number;
+  /** A trial merge of head into base has no conflicts. */
   mergeable: boolean;
+  /** Paths that conflict in the trial merge (empty when mergeable). */
+  conflicts: string[];
+  /** The commits base and head resolved to. */
+  baseSha: string;
+  headSha: string;
+  /** Files from the merge base to head, capped (see `truncated`). */
   files: FileDiff[];
+  /** True when files or patches were dropped to stay under the caps. */
+  truncated: boolean;
+  /** Head-only commits, oldest first (capped). */
   commits: CommitInfo[];
 };
 
+/**
+ * Merge branch `head` into branch `base` of the first remote and push base.
+ * "merge" makes a merge commit, "squash" one commit with head's changes,
+ * "rebase" replays head's commits onto base and fast-forwards base to them
+ * (`message` is unused then). On conflict nothing is pushed.
+ */
 export type MergeJob = {
   type: "merge";
   remotes: Remote[];
@@ -54,10 +76,14 @@ export type MergeJob = {
   head: string;
   method: "merge" | "squash" | "rebase";
   message: string;
+  /** Author and committer of the commits the merge creates. */
   author: { name: string; email: string };
+  /** Refuse to merge if head no longer points here (it moved since it was reviewed). */
+  headSha?: string;
 };
 export type MergeResult =
-  { status: "merged"; sha: string } | { status: "conflict"; files: string[]; diff: string };
+  | { status: "merged"; sha: string; baseSha: string; headSha: string }
+  | { status: "conflict"; files: string[]; diff: string };
 
 export type WorkflowJob = {
   type: "workflow";
