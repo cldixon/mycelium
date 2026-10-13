@@ -85,17 +85,35 @@ export type MergeResult =
   | { status: "merged"; sha: string; baseSha: string; headSha: string }
   | { status: "conflict"; files: string[]; diff: string };
 
+/**
+ * Check out `sha` (fetched from the remote named `repo`) into a clean
+ * directory and run each step with `bash -lc`, stopping at the first failure.
+ * `timeoutSec` caps the whole job; a step's own `timeoutSec` caps that step.
+ */
 export type WorkflowJob = {
   type: "workflow";
   remotes: Remote[];
   repo: string;
   sha: string;
-  steps: { name: string; run: string }[];
+  steps: { name: string; run: string; timeoutSec?: number }[];
   timeoutSec: number;
 };
+/** Results for the steps that ran, in order (steps after a failure are left out). */
 export type WorkflowResult = {
   status: "success" | "failure" | "error";
-  steps: { exitCode: number | null; log: string; durationMs: number }[];
+  steps: WorkflowStepResult[];
+  /** Set when status is "error": what went wrong outside the steps (e.g. checkout). */
+  error?: string;
+};
+export type WorkflowStepResult = {
+  /** Null when the step was killed (timeout). */
+  exitCode: number | null;
+  /** Combined stdout and stderr; the tail when it was too long. */
+  log: string;
+  durationMs: number;
+  /** ISO time the step started (the container's clock). */
+  startedAt?: string;
+  timedOut?: boolean;
 };
 
 export type Job = PingJob | DiffJob | MergeJob | WorkflowJob;

@@ -45,7 +45,7 @@ export function configPath(dir: string): string {
 export function readConfigFile(dir: string): Partial<MyceliumConfig> | null {
   const path = configPath(dir);
   if (!existsSync(path)) {
-    if (process.env.MYCELIUM_CONFIG) {
+    if (process.env.MYCELIUM_CONFIG && !process.env.MYCELIUM_SETUP) {
       throw new Error(`MYCELIUM_CONFIG points at ${path}, which doesn't exist`);
     }
     return null;
@@ -67,9 +67,11 @@ export function loadMyceliumConfig(dir: string, { allowDefaults = false } = {}):
     const value = process.env[name];
     if (value !== undefined) (env as Record<string, string | null>)[key] = value || null;
   }
-  if (!file && !env.worker && !allowDefaults) {
+  // `mycelium setup` runs cf commands before the file exists, and cf evaluates
+  // this config for every command run in the folder.
+  if (!file && !env.worker && !allowDefaults && !process.env.MYCELIUM_SETUP) {
     throw new Error(
-      `No ${CONFIG_FILE} in ${dir}. Copy mycelium.config.example.json to ${CONFIG_FILE}, ` +
+      `No ${CONFIG_FILE} in ${dir}. Run \`mycelium setup\` to create one, ` +
         `or set MYCELIUM_WORKER (and MYCELIUM_DOMAIN, MYCELIUM_NAMESPACE) in the environment.`,
     );
   }
@@ -87,13 +89,26 @@ export const queueNames = (worker: string) => ({
 });
 
 /**
+ * The runner image's Dockerfile. The published package ships it in runner/
+ * next to this file (config.js); in the repo it is the runner workspace.
+ */
+export function runnerDockerfile(): string {
+  const packaged = join(import.meta.dirname, "runner", "Dockerfile");
+  return existsSync(packaged)
+    ? packaged
+    : resolve(import.meta.dirname, "..", "runner", "Dockerfile");
+}
+
+/**
  * The instance Worker's cf config, built from the owner's settings in `dir`.
- * The only place the cf config is built.
+ * The only place the cf config is built. The repo's own instance passes its
+ * source entrypoint; the published package defaults to the prebuilt bundle it
+ * ships (worker/worker.js next to config.js).
  *
  * `--mode local` (`dev --local`) needs no config file. Artifacts has no local
  * simulation, so the binding is always remote.
  */
-export function defineMycelium({ dir, entrypoint }: { dir: string; entrypoint: string }) {
+export function defineMycelium({ dir, entrypoint }: { dir: string; entrypoint?: string }) {
   return defineConfig(({ mode }) => {
     const local = mode === "local";
     const mycelium = loadMyceliumConfig(dir, {
@@ -103,10 +118,10 @@ export function defineMycelium({ dir, entrypoint }: { dir: string; entrypoint: s
     const queues = queueNames(mycelium.worker);
 
     // The runner: git, diffs, merges and workflow steps in a Linux container.
-    // Build context is runner/ (see runner/Dockerfile for the bun binary).
+    // Build context is the Dockerfile's folder (see runner/Dockerfile for bun).
     const runner = defineContainer({
       name: `${mycelium.worker}-runner`,
-      image: { dockerfile: resolve(dir, "..", "runner", "Dockerfile") },
+      image: { dockerfile: runnerDockerfile() },
       instanceType: "basic",
       maxInstances: 5,
     });
@@ -116,7 +131,7 @@ export function defineMycelium({ dir, entrypoint }: { dir: string; entrypoint: s
         name: mycelium.worker,
         compatibilityDate: "2026-10-06",
         compatibilityFlags: ["nodejs_compat"],
-        entrypoint,
+        entrypoint: entrypoint ?? join(import.meta.dirname, "worker", "worker.js"),
         observability: { enabled: true },
 
         // The zone must be on your own Cloudflare account. Without a domain,

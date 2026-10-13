@@ -3,6 +3,7 @@ import { getOwnerHandle } from "../../auth/owner.js";
 import { getDb } from "../../db/migrations.js";
 import { getRepoRow } from "../../git/artifacts.js";
 import { diffJob, mergeJob, repoRefs } from "../../pulls/git.js";
+import { startPullRuns } from "../../pulls/push.js";
 import {
   defaultMergeMessage,
   isBranchName,
@@ -65,6 +66,19 @@ async function readJson(c: C): Promise<Record<string, unknown> | null> {
   const body = await c.req.json().catch(() => null);
   return body && typeof body === "object" ? (body as Record<string, unknown>) : null;
 }
+
+/** Run `work` after the response (waitUntil), or just let it run where there is no context (tests). */
+function background(c: C, work: Promise<unknown>): void {
+  try {
+    c.executionCtx.waitUntil(work);
+  } catch {
+    void work;
+  }
+}
+
+/** `on: pull_request` workflows for the PR's head (Actions feature; fails soft). */
+const pullRuns = (c: C, repo: string, number: number, headSha: string) =>
+  background(c, startPullRuns(c.env, repo, number, headSha));
 
 /** Who the owner is in pull requests and comments: the handle, or the DID. */
 async function ownerName(c: C): Promise<string> {
@@ -147,6 +161,7 @@ pullsRoute.post("/pulls", requireOwner, async (c) => {
     headSha,
     baseSha,
   });
+  pullRuns(c, row.name, pull.number, headSha);
   return c.json(toPull(pull), 201);
 });
 
@@ -180,7 +195,11 @@ pullsRoute.patch("/pulls/:n{[0-9]+}", requireOwner, async (c) => {
     }
   }
   if (Object.keys(update).length === 0) return c.json(toPull(pull));
-  return c.json(toPull(await updatePull(c.get("db"), pull.id, update)));
+  const updated = await updatePull(c.get("db"), pull.id, update);
+  if (update.state === "open" && updated.head_sha) {
+    pullRuns(c, row.name, updated.number, updated.head_sha);
+  }
+  return c.json(toPull(updated));
 });
 
 /**
@@ -202,6 +221,8 @@ pullsRoute.get("/pulls/:n{[0-9]+}/diff", async (c) => {
         head_sha: diff.headSha,
         base_sha: diff.baseSha,
       });
+      // Head moved without a push event (no subscription): catch up on PR runs.
+      if (diff.headSha !== pull.head_sha) pullRuns(c, row.name, pull.number, diff.headSha);
     }
     return c.json(diff);
   } catch (error) {

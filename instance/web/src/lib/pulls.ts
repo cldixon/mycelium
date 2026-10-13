@@ -61,10 +61,12 @@ export async function runsFor(repo: string, sha: string): Promise<RunSummary[] |
     if (!res.ok) return null;
     const data = (await res.json()) as { runs?: unknown };
     if (!Array.isArray(data.runs)) return null;
-    return data.runs.filter(
-      (r): r is RunSummary =>
-        !!r && typeof r === "object" && "number" in r && "workflow" in r && "status" in r,
-    );
+    // Newest first: keep the latest run of each workflow.
+    const latest = new Map<string, RunSummary>();
+    for (const r of data.runs as RunSummary[]) {
+      if (r && typeof r === "object" && !latest.has(r.workflow)) latest.set(r.workflow, r);
+    }
+    return [...latest.values()];
   } catch {
     return null;
   }

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { DiffResult, MergeMethod, Pull } from "$shared/types";
-  import { Button, Field, Loading, Notice, plural } from "@mycelium/ui";
+  import { Button, Field, Loading, Notice, StatusIcon, plural } from "@mycelium/ui";
   import { mergeOrConflict, runsFor, type RunSummary } from "$lib/pulls";
 
   /**
@@ -69,7 +69,7 @@
     <ul class="grid gap-0.5" aria-label="Workflow runs">
       {#each runs as run (run.number)}
         <li class="flex flex-wrap items-baseline gap-x-3 text-meta">
-          <span class="eyebrow w-16">{run.status}</span>
+          <StatusIcon status={run.status} label />
           <a href="/{repo}/actions/runs/{run.number}">{run.workflow}</a>
           <span class="data text-muted">#{run.number}</span>
         </li>

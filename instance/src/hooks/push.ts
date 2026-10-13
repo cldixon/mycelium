@@ -1,4 +1,5 @@
 import type { Bindings } from "../api/bindings.js";
+import { triggerPushRuns } from "../actions/triggers.js";
 import type { PushCommit } from "../shared/types.js";
 import { onPullsPush } from "../pulls/push.js";
 
@@ -27,5 +28,6 @@ export type Push = {
 };
 
 export async function onPush(env: Bindings, repo: string, push: Push): Promise<void> {
-  await onPullsPush(env, repo, push);
+  await triggerPushRuns(env, repo, push); // Actions: `on: push` workflows (never throws)
+  await onPullsPush(env, repo, push); // Pulls: head/base shas, PR runs, closes on head deletion
 }

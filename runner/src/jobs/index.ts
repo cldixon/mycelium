@@ -2,6 +2,7 @@ import type { Job, JobResult } from "../../../instance/src/shared/jobs.ts";
 import { diff } from "./diff.ts";
 import { merge } from "./merge.ts";
 import { ping } from "./ping.ts";
+import { workflow } from "./workflow.ts";
 
 /**
  * Job handlers by type. Each feature adds its handler in its own file
@@ -17,4 +18,5 @@ export const handlers: Handlers = {
   ping,
   diff,
   merge,
+  workflow,
 };
