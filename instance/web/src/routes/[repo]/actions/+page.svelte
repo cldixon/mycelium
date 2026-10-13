@@ -42,13 +42,17 @@
     now = Date.now();
   }
 
-  onMount(() => {
-    loadRuns();
+  function loadWorkflows() {
     actions
       .workflows(repo)
-      .then((w) => (list = w))
+      .then((w) => ((list = w), (listError = null)))
       .catch((e) => (listError = e instanceof Error ? e.message : String(e)));
     if (owner) actions.refs(repo).then((r) => (branches = r?.branches ?? []));
+  }
+
+  onMount(() => {
+    loadRuns();
+    loadWorkflows();
     // Polling is the fallback while the live socket is down.
     return poll(
       loadRuns,
@@ -56,6 +60,14 @@
     );
   });
   $effect(() => onLive(repo, ["run"], debounce(loadRuns, 150)));
+  // A push (or a reconnect) may change the workflow files and branches.
+  $effect(() =>
+    onLive(
+      repo,
+      ["push"],
+      debounce(() => (loadWorkflows(), loadRuns()), 300),
+    ),
+  );
 
   function open(workflow: string) {
     running = running === workflow ? null : workflow;

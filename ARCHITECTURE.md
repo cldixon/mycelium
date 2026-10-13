@@ -52,6 +52,7 @@ instance/                 @mycelium/instance: the Worker (Hono)
   src/jobs/workflow.ts    runWorkflow(env, runId): extension point for jobs-queue messages; enqueueRun
   src/shared/types.ts     API types shared with the web app (`$shared/types` there)
   src/shared/jobs.ts      runner Job/result types, shared with runner/ (type-only imports)
+  src/live/               LiveHub DO (hub.ts), publish(env, repo, event), activity query
 instance/web/             SvelteKit SPA (adapter-static, ssr=false), served by Workers Static Assets
 runner/                   the container: Dockerfile + src/server.ts + src/jobs/*.ts
 packages/platform/        copied from igloo: migrate, settings, web-sessions, oauth, identity, testing
@@ -75,7 +76,7 @@ Secrets are not declared in the cf config (declared secrets are required); they 
 fields on the hand-written `Bindings` type in `src/api/bindings.ts`.
 
 Bindings: `DB` (D1), `ARTIFACTS` (namespace from config, default = worker name), `ASSETS`,
-`JOBS` (queue producer), `RUNNER` (DO namespace). Secrets: `SETUP_CODE`, `OAUTH_SIGNING_KEY`
+`JOBS` (queue producer), `RUNNER` (DO namespace), `LIVE` (LiveHub DO namespace). Secrets: `SETUP_CODE`, `OAUTH_SIGNING_KEY`
 (both optional, generated into settings like igloo), `CF_API_TOKEN` (optional; enables push
 subscriptions). Text vars: `INSTANCE_TITLE`.
 
@@ -175,6 +176,21 @@ through the binding → inserts `runs` + `run_steps` (status `queued`) → sends
 `JOBS` queue → queue consumer marks `running`, calls the runner `workflow` job, writes step
 results and final status. The PR page shows the latest run per workflow for the PR's head sha.
 
+## Live updates
+
+A `LiveHub` Durable Object (`src/live/hub.ts`, hibernation WebSocket API, `ping` → `pong`
+auto-response) holds browsers' sockets: one per repo (`idFromName("repo:<name>")`) and one for
+the instance (`idFromName("instance")`). Features call `publish(env, repo, event)`
+(`src/live/publish.ts`) after a change lands in D1; it never throws, gives up after 3 s, and sends
+the event to the repo's hub and the instance's. Events (`src/shared/live.ts`): `push` {ref,
+before, after, count}, `pull` {number, action: opened|updated|merged|closed|reopened|commented},
+`run` {number, workflow, status, step?}, `repo` {action: created|updated|deleted}; each carries
+`repo`, `at` and `private`. The Worker authorizes each socket (`routes/live.ts`: a private repo's
+feed is the owner's only; a cookie counts only from this origin) and marks the owner's; hubs send
+private events to owner sockets only and ask owner sockets older than an hour to reconnect (close
+4001). The SPA keeps one socket per scope (`web/src/lib/live.svelte.ts`) with backoff, reloads in
+place on events and after a reconnect, and polls only while its socket is down.
+
 ## Diffs
 
 - Commit view: the Worker diffs the commit's tree against its first parent's tree (recursive
@@ -194,6 +210,7 @@ Routes (repo names are a single path segment; the owner's handle is shown, not r
 /                                  repositories (+ New repository: create empty or import a public git URL)
 /signin                            sign in / claim
 /settings                          instance settings: API tokens, owner, about
+/activity                          recent pushes, pull requests and runs across repos, live
 /:repo                             Code tab: default branch tree + README
 /:repo/tree/:ref/[...path]         directory
 /:repo/blob/:ref/[...path]         file
@@ -209,7 +226,7 @@ Routes (repo names are a single path segment; the owner's handle is shown, not r
 /:repo/settings                    description, visibility, default branch, git credentials, delete
 ```
 
-Static routes win over `[repo]`, so repo names `signin`, `settings`, `api`, `oauth` and `health`
+Static routes win over `[repo]`, so repo names `signin`, `settings`, `activity`, `api`, `oauth` and `health`
 must be rejected at creation. Branch names may contain `/`; `tree/[ref]/[...path]` has to resolve
 the longest matching ref (from `/refs`).
 
@@ -235,6 +252,8 @@ GET  /api/repos/:repo/pulls/branches         GET /api/repos/:repo/pulls/compare?
 GET  /api/repos/:repo/runs                   POST /api/repos/:repo/runs {workflow, ref}
 GET  /api/repos/:repo/runs/:n                GET /api/repos/:repo/workflows
 GET  /api/tokens · POST /api/tokens · DELETE /api/tokens/:id
+GET  /api/live · GET /api/repos/:repo/live   WebSocket upgrades (live updates)
+GET  /api/activity?limit=&repo=             recent pushes, PR events and runs, newest first
 ```
 
 In the code routes `:ref` is the rest of the URL path, so branch names with `/` need no escaping
