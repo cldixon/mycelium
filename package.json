@@ -1,0 +1,29 @@
+{
+  "name": "mycelium",
+  "version": "0.1.0",
+  "description": "A private, self-deployable GitHub-like service on Cloudflare",
+  "type": "module",
+  "private": true,
+  "workspaces": [
+    "instance",
+    "instance/web",
+    "runner",
+    "packages/*"
+  ],
+  "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "bun run --filter '*' typecheck",
+    "test": "bun test instance packages runner",
+    "check": "bun run format:check && bun run typecheck && bun run --cwd instance check && bun run test"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.6",
+    "prettier-plugin-svelte": "^4.1.1",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "license": "MIT"
+}
