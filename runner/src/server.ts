@@ -2,12 +2,20 @@
 // instance/src/shared/jobs.ts) to POST /jobs; each runs real git (and, for
 // workflows, the repo's own commands) and answers JSON.
 import type { Job } from "../../instance/src/shared/jobs.ts";
+import { PROTOCOL_HEADER, RUNNER_PROTOCOL } from "./protocol.ts";
 import { sh } from "./git.ts";
 import { startBackground, waitForStatus } from "./background.ts";
 import { handlers } from "./jobs/index.ts";
 import { workflow } from "./jobs/workflow.ts";
 
+/** Every response carries the protocol version (instance/src/shared/jobs.ts). */
 export async function handle(req: Request): Promise<Response> {
+  const res = await route(req);
+  res.headers.set(PROTOCOL_HEADER, String(RUNNER_PROTOCOL));
+  return res;
+}
+
+async function route(req: Request): Promise<Response> {
   const url = new URL(req.url);
   if (url.pathname === "/health") {
     return Response.json({

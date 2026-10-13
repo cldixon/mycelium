@@ -6,6 +6,16 @@
  */
 
 /** A git remote the job may use, with a short-lived repo-scoped token. */
+/**
+ * The Worker <-> runner protocol version. The runner stamps it on every
+ * response (PROTOCOL_HEADER). A deploy only gives new container instances the
+ * new image, so a warm instance can still run the old one; the Worker keys
+ * container instances by this version (see instance/src/runner.ts).
+ * Bump it whenever the job protocol changes.
+ */
+export const RUNNER_PROTOCOL = 2;
+export const PROTOCOL_HEADER = "x-mycelium-runner-protocol";
+
 export type Remote = { name: string; url: string; token: string };
 
 export type FileDiff = {
