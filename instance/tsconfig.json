@@ -12,6 +12,7 @@
   "include": [
     "src/**/*.ts",
     "scripts/**/*.ts",
+    "cli/**/*.ts",
     "cloudflare.config.ts",
     "config.ts",
     "wrangler.config.ts",
