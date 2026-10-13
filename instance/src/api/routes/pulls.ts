@@ -1,5 +1,6 @@
 import { Hono, type Context } from "hono";
 import { getOwnerHandle } from "../../auth/owner.js";
+import { evaluate, unsatisfiedReason } from "../../checks/index.js";
 import { getDb } from "../../db/migrations.js";
 import { getRepoRow } from "../../git/artifacts.js";
 import { diffJob, mergeJob, repoRefs } from "../../pulls/git.js";
@@ -249,7 +250,16 @@ pullsRoute.post("/pulls/:n{[0-9]+}/merge", requireOwner, async (c) => {
     typeof body.message === "string" && body.message.trim()
       ? body.message.trim()
       : defaultMergeMessage(pull, method);
-  const headSha = typeof body.headSha === "string" ? body.headSha : undefined;
+  let headSha = typeof body.headSha === "string" ? body.headSha : undefined;
+  // Required checks (src/checks): every required workflow must have passed on the head.
+  const checks = await evaluate(c.env, row.name, pull);
+  if (!checks.satisfied) return c.json({ error: unsatisfiedReason(checks), checks }, 409);
+  if (checks.required.length > 0) {
+    if (headSha && headSha !== pull.head_sha) {
+      return c.json({ error: "The head moved since the checks ran; reload", checks }, 409);
+    }
+    headSha = pull.head_sha ?? undefined; // merge only the commit the checks passed on
+  }
   const author = ownerIdentity(
     await getOwnerHandle(c.get("db")),
     c.get("ownerDid"),

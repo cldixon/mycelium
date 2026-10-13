@@ -3,6 +3,7 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import type {
+  ChecksEvaluation,
   CommitDetail,
   CommitList,
   DiffResult,
@@ -68,7 +69,7 @@ How to work:
 2. To change code, call \`git_credentials\` (scope write) and use plain git with the token in a header, exactly as the result shows: \`git -c http.extraHeader="Authorization: Bearer <token>" clone <remote>\`. Never put the token in the URL (it contains \`?expires=\`). Tokens are short-lived; ask again when one expires.
 3. Work on a new branch, never on the default branch. Commit with a clear message${actor.kind === "agent" ? ` and an \`Agent: ${actor.name}\` trailer` : ""}, push the branch, then \`open_pull\` (head = your branch, base = the default branch).
 4. Pull requests run \`on: pull_request\` workflows (\`.mycelium/workflows/*.yml\`). Watch them with \`get_pull\` (its checks) or \`list_runs\`/\`get_run\` (step logs); \`run_workflow\` runs one by hand. Fix failures by pushing to the same branch.
-5. Discuss with \`comment_pull\`. Merge with \`merge_pull\` only when checks pass and you were asked to; pass \`head_sha\` from \`get_pull\` so a newer push is never merged unseen.`;
+5. Discuss with \`comment_pull\`. Merge with \`merge_pull\` only when checks pass (required checks must, or the merge is refused) and you were asked to; pass \`head_sha\` from \`get_pull\` so a newer push is never merged unseen.`;
 }
 
 const text = (t: string): CallToolResult => ({ content: [{ type: "text", text: t }] });
@@ -448,7 +449,7 @@ export function buildServer(ctx: McpContext): McpServer {
     {
       title: "Get a pull request",
       description:
-        "A pull request with its comments, its checks (the latest run of each workflow for the head commit) and a diff summary: mergeable, conflicts, ahead/behind, commits and per-file counts (patches when `patch` is true, capped).",
+        "A pull request with its comments, its checks (the latest run of each workflow for the head commit; `requiredChecks`: what must pass before it can merge) and a diff summary: mergeable, conflicts, ahead/behind, commits and per-file counts (patches when `patch` is true, capped).",
       inputSchema: {
         repo: repoArg,
         number: z.number().int().min(1),
@@ -499,7 +500,9 @@ export function buildServer(ctx: McpContext): McpServer {
       const sha =
         pull.state === "open" && "headSha" in diff ? (diff.headSha as string) : pull.headSha;
       const checks = sha ? await latestRuns(api, repo, sha) : [];
-      return json({ ...pull, checks, comments, diff });
+      // Required checks gate the merge (#19); older instances may not have them.
+      const required = await api<ChecksEvaluation>("GET", `${base}/checks`).catch(() => null);
+      return json({ ...pull, checks, requiredChecks: required, comments, diff });
     }),
   );
 

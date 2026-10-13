@@ -4,6 +4,7 @@
   import type { GitCredentials, GitScope, Repo, Visibility } from "$shared/types";
   import { Button, CopyButton, Field, Notice, Section, formatDateTime } from "@mycelium/ui";
   import { gitCommands, repoAdmin } from "$lib/repos";
+  import RequiredChecksSection from "./RequiredChecksSection.svelte";
 
   let { data } = $props();
 
@@ -185,6 +186,8 @@
         </dl>
       {/if}
     </Section>
+
+    <RequiredChecksSection repo={repo.name} defaultBranch={repo.defaultBranch} />
 
     <Section title="Danger zone">
       <form class="grid max-w-form gap-3 border border-danger p-4" onsubmit={remove}>

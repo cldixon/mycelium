@@ -5,6 +5,7 @@ import { codeRoute } from "./routes/code.js";
 import { pullsRoute } from "./routes/pulls.js";
 import { actionsRoute } from "./routes/actions.js";
 import { settingsRoute } from "./routes/settings.js";
+import { checksRoute } from "./routes/checks.js";
 import { mcpEndpoint } from "../mcp/route.js";
 import type { AppEnv } from "./session.js";
 
@@ -22,6 +23,7 @@ app.route("/api/repos", reposRoute); //            /api/repos, /api/repos/:repo,
 app.route("/api/repos/:repo", codeRoute); //       .../tree, blob, commits, commit, contributors
 app.route("/api/repos/:repo", pullsRoute); //      .../pulls/*
 app.route("/api/repos/:repo", actionsRoute); //    .../runs/*, .../workflows
+app.route("/api/repos/:repo", checksRoute); //     .../checks/required, .../pulls/:n/checks
 app.route("/api", settingsRoute); //               /api/tokens/*
 app.all("/mcp", mcpEndpoint(app)); //              MCP for agents (bearer API token)
 

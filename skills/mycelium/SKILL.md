@@ -57,8 +57,10 @@ The same token works on the REST API (`/api/...`, see ARCHITECTURE.md "API").
    shows each step's exit code and the end of its log. Fix failures by pushing to the same
    branch (new runs start when push events are on; otherwise `run_workflow` at the branch).
 5. Reply in the conversation with `comment_pull`. Merge with `merge_pull` only when asked and
-   checks pass; pass `head_sha` from `get_pull` so a newer push isn't merged unseen. A conflict
-   pushes nothing and lists the files: merge the base into your branch, push, retry.
+   checks pass; pass `head_sha` from `get_pull` so a newer push isn't merged unseen. Branches can
+   require workflows (`get_pull` → `requiredChecks`): until they succeed on the head commit the
+   merge is refused with 409. A conflict pushes nothing and lists the files: merge the base into
+   your branch, push, retry.
 
 ## Notes
 

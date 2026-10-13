@@ -120,6 +120,7 @@ export async function deleteRepoRows(db: D1Database, name: string): Promise<void
       "DELETE FROM pushes WHERE repo = ?",
       "DELETE FROM git_grants WHERE repo = ?",
       "DELETE FROM counters WHERE repo = ?",
+      "DELETE FROM required_checks WHERE repo = ?",
       "DELETE FROM repos WHERE name = ?",
     ].map((sql) => db.prepare(sql).bind(name)),
   );

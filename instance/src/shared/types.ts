@@ -590,3 +590,27 @@ export type InstanceSettings = {
   /** True when CF_API_TOKEN is set, so new repos get push event subscriptions. */
   pushEvents: boolean;
 };
+
+// --- Required checks (/api/repos/:repo/checks, /pulls/:n/checks) -------------
+
+/** A required workflow on a pull request's head, by its latest run there. */
+export type CheckStatus = "success" | "failure" | "pending" | "missing";
+
+export type RequiredCheck = {
+  workflow: string;
+  status: CheckStatus;
+  /** The latest run of this workflow on the head commit. */
+  runNumber?: number;
+};
+
+/** GET /pulls/:n/checks; also the `checks` of a 409 from merge. */
+export type ChecksEvaluation = {
+  /** The commit the checks are for (the pull request's head). */
+  sha: string | null;
+  required: RequiredCheck[];
+  /** True when every required workflow's latest run succeeded (or none is required). */
+  satisfied: boolean;
+};
+
+/** GET/PUT /checks/required?branch= */
+export type RequiredChecks = { branch: string; workflows: string[] };
