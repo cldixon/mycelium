@@ -4,3 +4,4 @@ dist/
 *.token
 *.env
 probes/git-runner/container/bun
+.claude/worktrees/
