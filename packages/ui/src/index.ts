@@ -1,11 +1,15 @@
 export { default as AccountMenu } from "./components/AccountMenu.svelte";
 export { default as Brand } from "./components/Brand.svelte";
+export { default as BranchSelect } from "./components/BranchSelect.svelte";
 export { default as Breadcrumbs } from "./components/Breadcrumbs.svelte";
 export { default as Button } from "./components/Button.svelte";
+export { default as CodeView } from "./components/CodeView.svelte";
 export { default as CopyButton } from "./components/CopyButton.svelte";
 export { default as Dialog } from "./components/Dialog.svelte";
+export { default as DiffView, type DiffViewHunk } from "./components/DiffView.svelte";
 export { default as EmptyState } from "./components/EmptyState.svelte";
 export { default as Field } from "./components/Field.svelte";
+export { default as FileTable, type FileRow } from "./components/FileTable.svelte";
 export { default as Loading } from "./components/Loading.svelte";
 export { default as MetaList } from "./components/MetaList.svelte";
 export { default as NavLink } from "./components/NavLink.svelte";
