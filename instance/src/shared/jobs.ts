@@ -110,6 +110,8 @@ export type WorkflowResult = {
   steps: WorkflowStepResult[];
   /** Set when status is "error": what went wrong outside the steps (e.g. checkout). */
   error?: string;
+  /** Where the time went, in the runner (for the Worker's log). */
+  timing?: { checkoutMs?: number; totalMs?: number };
 };
 export type WorkflowStepResult = {
   /** Null when the step was killed (timeout). */

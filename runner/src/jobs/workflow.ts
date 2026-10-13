@@ -138,6 +138,7 @@ export async function workflow(
       return null;
     })();
     if (err) return { status: "error", steps: [], error: err };
+    const timing = { checkoutMs: Date.now() - t0 };
 
     const env: Record<string, string> = {
       PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
@@ -160,7 +161,7 @@ export async function workflow(
           startedAt: new Date().toISOString(),
           timedOut: true,
         });
-        return { status: "failure", steps };
+        return { status: "failure", steps, timing };
       }
       const cap = step.timeoutSec ? Math.min(step.timeoutSec * 1000, left) : left;
       const result = await runStep(checkout, step.run, env, cap, (startedAt, snapshot) => {
@@ -173,9 +174,9 @@ export async function workflow(
       });
       progress.current = null;
       steps.push(result);
-      if (result.exitCode !== 0) return { status: "failure", steps };
+      if (result.exitCode !== 0) return { status: "failure", steps, timing };
     }
-    return { status: "success", steps };
+    return { status: "success", steps, timing };
   } catch (error) {
     progress.current = null;
     return {

@@ -64,7 +64,7 @@ export function startBackground(
         error: error instanceof Error ? error.message : String(error),
       }))
       .then((result) => {
-        entry.result = result;
+        entry.result = { ...result, timing: { ...result.timing, totalMs: Date.now() - t0 } };
         entry.finishedAt = Date.now();
         console.log(`job ${job.type} ${job.id} ${result.status} in ${Date.now() - t0} ms`);
       }),

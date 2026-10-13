@@ -1,5 +1,16 @@
 import type { Refs, Run, RunDetail, RunStatus, WorkflowList } from "$shared/types";
 import { get, request, seg } from "$lib/api";
+import { personName } from "@mycelium/ui";
+
+/** Who started a run: the owner by handle (else short DID), an agent by its name. */
+export function actorName(
+  actor: { name: string; kind: string },
+  status?: { owner?: string | null; handle?: string | null } | null,
+): string {
+  return actor.kind === "agent"
+    ? actor.name
+    : personName(actor.name, { did: status?.owner, handle: status?.handle });
+}
 
 /** Client for Actions: workflows and runs (/api/repos/:repo/workflows, /runs). */
 

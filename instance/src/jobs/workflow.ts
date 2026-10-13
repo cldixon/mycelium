@@ -205,9 +205,11 @@ export async function runWorkflow(env: Bindings, runId: number): Promise<void> {
     }
   };
 
+  const timings: { prep?: number; runner?: number } = {};
+  const t1 = Date.now();
   let result: WorkflowResult;
   try {
-    result = await execute(env, run, steps, onProgress);
+    result = await execute(env, run, steps, onProgress, undefined, timings);
   } catch (error) {
     console.error(`mycelium: run ${runId} failed`, error);
     result = {
@@ -218,6 +220,7 @@ export async function runWorkflow(env: Bindings, runId: number): Promise<void> {
     };
   }
 
+  const t2 = Date.now();
   const applied = applyResult(steps, result, started);
   const finished = new Date().toISOString();
   await db.batch([
@@ -232,7 +235,8 @@ export async function runWorkflow(env: Bindings, runId: number): Promise<void> {
   ]);
   await publishRun(env, run, applied.status);
   console.log(
-    `mycelium: run ${run.repo}#${run.number} ${applied.status} in ${Date.now() - started} ms`,
+    `mycelium: run ${run.repo}#${run.number} ${applied.status} in ${Date.now() - started} ms` +
+      ` (before execute ${t1 - started}, prep ${timings.prep}, runner ${timings.runner} [job ${JSON.stringify(result.timing ?? {})}], after ${Date.now() - t2})`,
   );
 }
 
@@ -273,7 +277,10 @@ export async function execute(
   steps: Pick<RunStepRow, "idx" | "name" | "command">[],
   onProgress: (progress: WorkflowProgress) => Promise<void>,
   runner?: RunnerClient,
+  /** Filled in: ms spent before the runner, and in it (for the log). */
+  timings: { prep?: number; runner?: number } = {},
 ): Promise<WorkflowResult> {
+  const t0 = Date.now();
   // Loaded lazily: src/runner.ts pulls in @cloudflare/containers, which only
   // exists in the Workers runtime (this module is also imported by tests).
   const [repo, loaded, client] = await Promise.all([
@@ -316,7 +323,9 @@ export async function execute(
   const deadline = Date.now() + timeoutSec * 1000 + RUNNER_SLACK_MS;
   // The runner holds each request up to POLL_MS waiting for the job to end
   // (a long poll), so a quick job answers at once and a long one every POLL_MS.
-  let asked = Date.now();
+  timings.prep = Date.now() - t0;
+  const asked0 = Date.now();
+  let asked = asked0;
   let status: JobStatus | null = await client.startJob(env, run.repo, job, POLL_MS);
   let failures = 0;
   while (!status.done) {
@@ -339,6 +348,7 @@ export async function execute(
     failures = 0;
     status = next;
   }
+  timings.runner = Date.now() - asked0;
   return status.result;
 }
 

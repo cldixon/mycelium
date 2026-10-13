@@ -13,7 +13,7 @@
     shortSha,
     timeAgo,
   } from "@mycelium/ui";
-  import { actions, duration, isActive, poll } from "$lib/actions";
+  import { actions, actorName, duration, isActive, poll } from "$lib/actions";
   import { debounce, liveFeed, onLive } from "$lib/live.svelte";
 
   let { data } = $props();
@@ -126,7 +126,10 @@
                 <td class="nowrap">
                   {run.event}{#if run.pullNumber}
                     · <a href="/{repo}/pulls/{run.pullNumber}">#{run.pullNumber}</a>{/if}
-                  {#if run.actor}by <Actor name={run.actor.name} kind={run.actor.kind} />{/if}
+                  {#if run.actor}by <Actor
+                      name={actorName(run.actor, data.status)}
+                      kind={run.actor.kind}
+                    />{/if}
                 </td>
                 <td class="data nowrap">
                   {run.ref} · <a href="/{repo}/commit/{run.sha}">{shortSha(run.sha)}</a>
