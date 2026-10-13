@@ -3,6 +3,8 @@ import { app } from "./api/app.js";
 import { handleQueue } from "./queue.js";
 import type { Bindings } from "./api/bindings.js";
 
+export { LiveHub } from "./live/hub.js";
+
 /**
  * The runner container's Durable Object. One instance per key (the repo
  * name), so one repo's jobs share a warm container and its cached clone.

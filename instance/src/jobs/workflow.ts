@@ -5,6 +5,7 @@ import { getDb } from "../db/migrations.js";
 import { getRepoRow } from "../git/artifacts.js";
 import type { WorkflowJob, WorkflowResult } from "../shared/jobs.js";
 import type { RunRow, RunStatus, RunStepRow, StepStatus } from "../shared/types.js";
+import { publishRun } from "../live/publish.js";
 
 /** Each step's stored log keeps at most this many characters (the tail). */
 export const MAX_LOG_CHARS = 64 * 1024;
@@ -125,6 +126,7 @@ export async function runWorkflow(env: Bindings, runId: number): Promise<void> {
       )
       .bind(new Date(started).toISOString(), runId),
   ]);
+  await publishRun(env, run, "running", { idx: 0, status: "running" }); // Live updates
 
   let result: WorkflowResult;
   try {
@@ -153,6 +155,7 @@ export async function runWorkflow(env: Bindings, runId: number): Promise<void> {
       .prepare("UPDATE runs SET status = ?, finished_at = ? WHERE id = ? AND status = 'running'")
       .bind(applied.status, finished, runId),
   ]);
+  await publishRun(env, run, applied.status);
   console.log(
     `mycelium: run ${run.repo}#${run.number} ${applied.status} in ${Date.now() - started} ms`,
   );
