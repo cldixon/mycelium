@@ -14,6 +14,7 @@
   } from "@mycelium/ui";
   import { repos } from "$lib/api";
   import { repoAdmin } from "$lib/repos";
+  import { debounce, INSTANCE, onLive } from "$lib/live.svelte";
 
   let { data } = $props();
 
@@ -21,13 +22,17 @@
   let list = $state<Repo[] | null>(null);
   let error = $state<string | null>(null);
 
-  onMount(async () => {
+  async function load() {
     try {
       list = await repos.list();
+      error = null;
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     }
-  });
+  }
+  onMount(load);
+  // Live: pushes and repo changes anywhere reload the list.
+  $effect(() => onLive(INSTANCE, ["push", "repo"], debounce(load)));
 
   /** "2h ago", "now", or a date past a year. */
   const ago = (iso: string) => {

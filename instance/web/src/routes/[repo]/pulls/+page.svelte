@@ -1,8 +1,14 @@
 <script lang="ts">
   import { Button, EmptyState, TabNav } from "@mycelium/ui";
+  import { invalidateAll } from "$app/navigation";
   import { ago } from "$lib/pulls";
+  import { debounce, onLive } from "$lib/live.svelte";
 
   let { data } = $props();
+
+  // Live: any pull request event reloads the list.
+  const reload = debounce(() => invalidateAll());
+  $effect(() => onLive(data.repo.name, ["pull"], reload));
 
   let root = $derived(`/${data.repo.name}/pulls`);
   let tabs = $derived([

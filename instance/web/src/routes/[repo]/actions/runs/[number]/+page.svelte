@@ -15,6 +15,7 @@
     shortSha,
   } from "@mycelium/ui";
   import { actions, duration, isActive, poll } from "$lib/actions";
+  import { debounce, liveFeed, onLive } from "$lib/live.svelte";
 
   let { data } = $props();
   let repo = $derived(data.repo.name);
@@ -40,7 +41,19 @@
 
   onMount(() => {
     load();
-    return poll(load, () => (run ? isActive(run.status) : false), 2000);
+    // Polling is the fallback while the live socket is down.
+    return poll(
+      load,
+      () => liveFeed(repo).status !== "live" && (run ? isActive(run.status) : false),
+      2000,
+    );
+  });
+  $effect(() => {
+    const n = number;
+    const reload = debounce(load, 150);
+    return onLive(repo, ["run"], (m) => {
+      if (!m || (m.type === "run" && m.number === n)) reload();
+    });
   });
 
   async function rerun() {

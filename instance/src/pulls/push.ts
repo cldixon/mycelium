@@ -3,6 +3,7 @@ import type { Bindings } from "../api/bindings.js";
 import { getDb } from "../db/migrations.js";
 import type { Push } from "../hooks/push.js";
 import { branchUpdate } from "./logic.js";
+import { publish } from "../live/publish.js";
 
 /**
  * Keep open pull requests in step with pushes (called from hooks/push.ts):
@@ -16,13 +17,16 @@ export async function onPullsPush(env: Bindings, repo: string, push: Push) {
   const db = await getDb(env.DB);
   const now = new Date().toISOString();
   if (update.sha === null) {
-    await db
+    const { results: closed } = await db
       .prepare(
         `UPDATE pulls SET state = 'closed', closed_at = ?1, updated_at = ?1
-         WHERE repo = ?2 AND head = ?3 AND state = 'open'`,
+         WHERE repo = ?2 AND head = ?3 AND state = 'open' RETURNING number`,
       )
       .bind(now, repo, update.branch)
-      .run();
+      .all<{ number: number }>();
+    for (const { number } of closed) {
+      await publish(env, repo, { type: "pull", number, action: "closed" });
+    }
     return;
   }
   const [moved] = await db.batch<{ number: number }>([
@@ -41,6 +45,7 @@ export async function onPullsPush(env: Bindings, repo: string, push: Push) {
       .bind(update.sha, repo, update.branch),
   ]);
   for (const { number } of moved?.results ?? []) {
+    await publish(env, repo, { type: "pull", number, action: "updated" });
     await startPullRuns(env, repo, number, update.sha);
   }
 }

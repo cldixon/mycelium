@@ -23,6 +23,7 @@ import {
   updatePull,
 } from "../../pulls/store.js";
 import { toPull, type PullRow, type RepoRow } from "../../shared/types.js";
+import { publish } from "../../live/publish.js";
 import { canRead, requireOwner, type AppEnv, type OwnerEnv } from "../session.js";
 
 /**
@@ -163,6 +164,7 @@ pullsRoute.post("/pulls", requireOwner, async (c) => {
     baseSha,
   });
   pullRuns(c, row.name, pull.number, headSha);
+  await publish(c.env, row.name, { type: "pull", number: pull.number, action: "opened" });
   return c.json(toPull(pull), 201);
 });
 
@@ -197,6 +199,8 @@ pullsRoute.patch("/pulls/:n{[0-9]+}", requireOwner, async (c) => {
   }
   if (Object.keys(update).length === 0) return c.json(toPull(pull));
   const updated = await updatePull(c.get("db"), pull.id, update);
+  const action = update.state ? (update.state === "open" ? "reopened" : "closed") : "updated";
+  await publish(c.env, row.name, { type: "pull", number: pull.number, action });
   if (update.state === "open" && updated.head_sha) {
     pullRuns(c, row.name, updated.number, updated.head_sha);
   }
@@ -281,6 +285,7 @@ pullsRoute.post("/pulls/:n{[0-9]+}/merge", requireOwner, async (c) => {
       head_sha: result.headSha,
       base_sha: result.baseSha,
     });
+    await publish(c.env, row.name, { type: "pull", number: pull.number, action: "merged" });
     return c.json(toPull(merged));
   } catch (error) {
     return failed(c, error);
@@ -305,5 +310,7 @@ pullsRoute.post("/pulls/:n{[0-9]+}/comments", requireOwner, async (c) => {
     await ownerName(c),
     text.slice(0, 65536),
   );
+  const { row, pull } = found;
+  await publish(c.env, row.name, { type: "pull", number: pull.number, action: "commented" });
   return c.json(comment, 201);
 });

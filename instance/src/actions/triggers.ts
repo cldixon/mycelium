@@ -7,6 +7,7 @@ import { enqueueRun } from "../jobs/workflow.js";
 import type { RunEvent, Workflow } from "../shared/types.js";
 import { loadWorkflows } from "./load.js";
 import { runsOn } from "./parse.js";
+import { publishRun } from "../live/publish.js";
 
 /**
  * What starts workflow runs: pushes (from src/hooks/push.ts), pull requests
@@ -83,6 +84,7 @@ export async function createRuns(
     created.push({ id, number, workflow: wf.name });
   }
   for (const run of created) {
+    await publishRun(env, { repo, ...run }, "queued"); // Live updates (never throws)
     try {
       await enqueueRun(env, run.id);
     } catch (error) {

@@ -96,7 +96,15 @@ export function lastActivity(repo: Pick<Repo, "updatedAt" | "pushedAt">): string
  * Repo names are one URL path segment. Static web routes win over `[repo]`,
  * so their names are reserved.
  */
-export const RESERVED_REPO_NAMES = ["signin", "settings", "api", "oauth", "health", "new"];
+export const RESERVED_REPO_NAMES = [
+  "signin",
+  "settings",
+  "api",
+  "oauth",
+  "health",
+  "new",
+  "activity",
+];
 export const REPO_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$/;
 
 /** Why `name` can't be a repo name, or null when it can. */
