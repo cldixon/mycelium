@@ -4,7 +4,7 @@ import { getRepoRow, mintToken } from "../git/artifacts.js";
 import { listRefs } from "../git/refs.js";
 import type { Push } from "../hooks/push.js";
 import { enqueueRun } from "../jobs/workflow.js";
-import type { RunEvent, Workflow } from "../shared/types.js";
+import type { Actor, RunEvent, Workflow } from "../shared/types.js";
 import { loadWorkflows } from "./load.js";
 import { runsOn } from "./parse.js";
 import { publishRun } from "../live/publish.js";
@@ -21,6 +21,8 @@ export type Trigger = {
   ref: string;
   sha: string;
   pullNumber?: number | null;
+  /** Who started it by hand (manual runs and reruns). */
+  actor?: Actor | null;
 };
 
 export type CreatedRun = { id: number; number: number; workflow: string };
@@ -59,8 +61,9 @@ export async function createRuns(
     const now = new Date().toISOString();
     const row = await db
       .prepare(
-        `INSERT INTO runs (repo, number, workflow, event, ref, sha, pull_number, status, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?) RETURNING id`,
+        `INSERT INTO runs (repo, number, workflow, event, ref, sha, pull_number, status, actor,
+                           actor_kind, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?) RETURNING id`,
       )
       .bind(
         repo,
@@ -70,6 +73,8 @@ export async function createRuns(
         trigger.ref,
         trigger.sha,
         trigger.pullNumber ?? null,
+        trigger.actor?.name ?? null,
+        trigger.actor?.kind ?? null,
         now,
       )
       .first<{ id: number }>();

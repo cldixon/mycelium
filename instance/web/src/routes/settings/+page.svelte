@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto, invalidate } from "$app/navigation";
   import {
+    Actor,
     Button,
     CopyButton,
     Field,
@@ -13,7 +14,7 @@
   } from "@mycelium/ui";
   import type { ApiTokenInfo, InstanceSettings } from "$shared/types";
   import { auth } from "$lib/api";
-  import { settings, TOKEN_LIFETIMES } from "$lib/settings";
+  import { mcpSetup, settings, TOKEN_LIFETIMES } from "$lib/settings";
 
   let { data } = $props();
 
@@ -22,7 +23,10 @@
   let tokens = $state<ApiTokenInfo[]>([]);
   let tokenName = $state("");
   let tokenDays = $state(90);
-  let newToken = $state<{ name: string; token: string } | null>(null);
+  let tokenAgent = $state("");
+  let tokenScope = $state<"read" | "write">("write");
+  let newToken = $state<{ name: string; token: string; agent: string | null } | null>(null);
+  let setup = $derived(newToken ? mcpSetup(location.origin, newToken.token) : null);
   let busy = $state(false);
   let error = $state<string | null>(null);
 
@@ -53,9 +57,15 @@
   const createToken = () =>
     run(async () => {
       const name = tokenName.trim();
-      const created = await settings.createToken(name, tokenDays);
-      newToken = { name, token: created.token };
+      const created = await settings.createToken({
+        name,
+        days: tokenDays,
+        agent: tokenAgent.trim() || null,
+        scope: tokenScope,
+      });
+      newToken = { name, token: created.token, agent: created.apiToken.agent };
       tokenName = "";
+      tokenAgent = "";
       tokens = await settings.tokens();
     });
 
@@ -93,7 +103,7 @@
       <Section
         id="tokens"
         title="API tokens"
-        description="For scripts and agents: send Authorization: Bearer <token> to /api. A token can do anything you can here except manage tokens, and it always expires."
+        description="For scripts and agents: send Authorization: Bearer <token> to /api or connect an MCP client to /mcp. A token can do anything you can here except manage tokens (a read token only reads), and it always expires. Name an agent and what the token does is shown as that agent's."
       >
         {#if newToken}
           <Notice tone="success" title="Copy “{newToken.name}” now. It won't be shown again.">
@@ -103,6 +113,24 @@
               <Button size="sm" variant="quiet" onclick={() => (newToken = null)}>done</Button>
             {/snippet}
           </Notice>
+          {#if setup}
+            <div class="grid gap-3" data-testid="mcp-setup">
+              <p class="text-meta">
+                Connect {#if newToken.agent}<Actor name={newToken.agent} kind="agent" />{:else}an
+                  MCP client{/if} to <code class="data">{setup.url}</code> with the header
+                <code class="data">Authorization: Bearer …</code>.
+              </p>
+              <Field label="Claude Code">
+                <pre
+                  class="data border border-line p-2 break-all whitespace-pre-wrap">{setup.claudeCode}</pre>
+              </Field>
+              <div><CopyButton value={setup.claudeCode} label="copy command" /></div>
+              <Field label="MCP client config (JSON)">
+                <pre class="data overflow-x-auto border border-line p-2">{setup.json}</pre>
+              </Field>
+              <div><CopyButton value={setup.json} label="copy config" /></div>
+            </div>
+          {/if}
         {/if}
 
         {#if tokens.length > 0}
@@ -110,15 +138,21 @@
             <table class="table">
               <thead>
                 <tr>
-                  <th>name</th><th>token</th><th>created</th><th>expires</th><th>last used</th><th
-                    ><span class="sr-only">Actions</span></th
-                  >
+                  <th>name</th><th>agent</th><th>scope</th><th>token</th><th>created</th><th
+                    >expires</th
+                  ><th>last used</th><th><span class="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
                 {#each tokens as t (t.id)}
                   <tr>
                     <td>{t.name}</td>
+                    <td class="nowrap">
+                      {#if t.agent}<Actor name={t.agent} kind="agent" />{:else}<span
+                          class="text-muted">owner</span
+                        >{/if}
+                    </td>
+                    <td class="data nowrap">{t.scope}</td>
                     <td class="data nowrap">{t.prefix}…</td>
                     <td class="data nowrap">{formatDate(t.createdAt)}</td>
                     <td class="data nowrap">{formatDate(t.expiresAt)}</td>
@@ -159,6 +193,17 @@
               />
             </Field>
           </div>
+          <div class="flex-1">
+            <Field label="Agent (optional)">
+              <input class="input" bind:value={tokenAgent} placeholder="claude-1" maxlength="39" />
+            </Field>
+          </div>
+          <Field label="Access">
+            <select class="input" bind:value={tokenScope}>
+              <option value="write">read and write</option>
+              <option value="read">read only</option>
+            </select>
+          </Field>
           <Field label="Expires in">
             <select class="input" bind:value={tokenDays}>
               {#each TOKEN_LIFETIMES as [days, label] (days)}

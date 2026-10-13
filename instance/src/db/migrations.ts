@@ -124,6 +124,33 @@ export const MIGRATIONS: Migration[] = [
     ],
   },
   {
+    // Agents as identities (#17). A token with an agent name acts as that agent
+    // (null: the owner's own script token); read-scoped tokens only read. What an
+    // agent does is attributed to it: `author_kind` beside the existing author
+    // names, `actor`/`actor_kind` on manual runs, and a log of minted git
+    // credentials.
+    name: "0003_agents",
+    statements: [
+      "ALTER TABLE api_tokens ADD COLUMN agent TEXT",
+      "ALTER TABLE api_tokens ADD COLUMN scope TEXT NOT NULL DEFAULT 'write'",
+      "ALTER TABLE pulls ADD COLUMN author_kind TEXT NOT NULL DEFAULT 'owner'",
+      "ALTER TABLE pull_comments ADD COLUMN author_kind TEXT NOT NULL DEFAULT 'owner'",
+      "ALTER TABLE runs ADD COLUMN actor TEXT",
+      "ALTER TABLE runs ADD COLUMN actor_kind TEXT",
+      `CREATE TABLE git_grants (
+        id INTEGER PRIMARY KEY,
+        repo TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        actor_kind TEXT NOT NULL,
+        token_id TEXT,
+        scope TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )`,
+      "CREATE INDEX git_grants_repo ON git_grants (repo, id)",
+    ],
+  },
+  {
     // Workflows that must succeed on a pull request's head before it merges
     // into `branch` (src/checks/).
     name: "0004_required_checks",

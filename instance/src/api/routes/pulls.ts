@@ -87,6 +87,12 @@ async function ownerName(c: C): Promise<string> {
   return (await getOwnerHandle(c.get("db"))) ?? c.get("ownerDid");
 }
 
+/** Who is writing: an agent by its name, or the owner (#17). */
+async function authorOf(c: C): Promise<{ name: string; kind: "owner" | "agent" }> {
+  const actor = c.get("actor");
+  return actor.kind === "agent" ? actor : { name: await ownerName(c), kind: "owner" };
+}
+
 /** Branches to compare (the Code feature's /refs also lists them; this keeps pulls standalone). */
 pullsRoute.get("/pulls/branches", async (c) => {
   const row = await readable(c);
@@ -159,7 +165,7 @@ pullsRoute.post("/pulls", requireOwner, async (c) => {
     body: text.slice(0, 65536),
     head,
     base,
-    author: await ownerName(c),
+    ...(await authorOf(c).then((a) => ({ author: a.name, authorKind: a.kind }))),
     headSha,
     baseSha,
   });
@@ -304,11 +310,13 @@ pullsRoute.post("/pulls/:n{[0-9]+}/comments", requireOwner, async (c) => {
   const body = await readJson(c);
   const text = typeof body?.body === "string" ? body.body.trim() : "";
   if (!text) return c.json({ error: "A comment needs a body" }, 400);
+  const author = await authorOf(c);
   const comment = await addComment(
     c.get("db"),
     found.pull.id,
-    await ownerName(c),
+    author.name,
     text.slice(0, 65536),
+    author.kind,
   );
   const { row, pull } = found;
   await publish(c.env, row.name, { type: "pull", number: pull.number, action: "commented" });

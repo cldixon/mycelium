@@ -2,6 +2,7 @@
   import { invalidate } from "$app/navigation";
   import type { DiffResult } from "$shared/types";
   import {
+    Actor,
     Button,
     EmptyState,
     Field,
@@ -88,7 +89,7 @@
   <PageHeader title="{pull.title} #{pull.number}">
     {#snippet status()}<span class="eyebrow">{pull.state}</span>{/snippet}
     {#snippet meta()}
-      {pull.author}
+      <Actor name={pull.author} kind={pull.authorKind} />
       {#if pull.state === "merged"}
         merged <span class="data">{pull.head}</span> into <span class="data">{pull.base}</span>
         {pull.mergedAt ? ago(pull.mergedAt) : ""}
@@ -107,7 +108,9 @@
   {#if data.tab === "conversation"}
     <div class="grid max-w-reading gap-4">
       <article class="grid gap-2 border-b border-line-soft pb-4">
-        <p class="text-meta text-muted">{pull.author} · {ago(pull.createdAt)}</p>
+        <p class="text-meta text-muted">
+          <Actor name={pull.author} kind={pull.authorKind} /> · {ago(pull.createdAt)}
+        </p>
         {#if pull.body.trim()}
           <Readme markdown={pull.body} />
         {:else}
@@ -117,7 +120,9 @@
 
       {#each data.comments as c (c.id)}
         <article class="grid gap-2 border-b border-line-soft pb-4">
-          <p class="text-meta text-muted">{c.author} · {ago(c.createdAt)}</p>
+          <p class="text-meta text-muted">
+            <Actor name={c.author} kind={c.authorKind} /> · {ago(c.createdAt)}
+          </p>
           <Readme markdown={c.body} />
         </article>
       {/each}

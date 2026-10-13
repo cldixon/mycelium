@@ -7,6 +7,7 @@ import { actionsRoute } from "./routes/actions.js";
 import { settingsRoute } from "./routes/settings.js";
 import { liveRoute } from "./routes/live.js";
 import { checksRoute } from "./routes/checks.js";
+import { mcpEndpoint } from "../mcp/route.js";
 import type { AppEnv } from "./session.js";
 
 /**
@@ -25,6 +26,7 @@ app.route("/api/repos/:repo", pullsRoute); //      .../pulls/*
 app.route("/api/repos/:repo", actionsRoute); //    .../runs/*, .../workflows
 app.route("/api/repos/:repo", checksRoute); //     .../checks/required, .../pulls/:n/checks
 app.route("/api", settingsRoute); //               /api/tokens/*
+app.all("/mcp", mcpEndpoint(app)); //              MCP for agents (bearer API token)
 app.route("/api", liveRoute); //                   /api/live, /api/repos/:repo/live, /api/activity
 
 app.onError((error, c) => {
@@ -32,7 +34,7 @@ app.onError((error, c) => {
   return c.json({ error: "Internal error" }, 500);
 });
 
-const API_PREFIXES = ["/api", "/health", "/oauth"];
+const API_PREFIXES = ["/api", "/health", "/oauth", "/mcp"];
 
 // Requests reach the Worker either because runWorkerFirst claimed them or
 // because they missed a static asset. Unmatched API paths are a real 404;
