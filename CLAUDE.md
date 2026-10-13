@@ -38,6 +38,31 @@ features come later, on top of this base.
   Pages compose components; they don't style themselves.
 - Svelte 5 runes (`$props`, `$state`, `$derived`, snippets).
 
+## Testing on Cloudflare (dev account)
+
+The dev Cloudflare account also holds other projects (igloo, tempra, …). **Only create, change or
+delete resources whose names start with `myc-`.** Never touch anything else.
+
+To test a branch end to end, deploy your own throwaway instance named `myc-<something>`:
+
+```sh
+cp "$(which bun)" runner/bun                     # once; gitignored
+docker info >/dev/null 2>&1 || (dockerd >/tmp/dockerd.log 2>&1 &)   # cf deploy builds the runner image
+(cd /tmp && cf queues create --queue-name myc-x-events && cf queues create --queue-name myc-x-jobs)
+bun run --cwd instance build                     # the SPA
+cd instance && MYCELIUM_WORKER=myc-x MYCELIUM_TITLE="myc-x" cf deploy
+bun run instance/scripts/test-owner.ts --url https://myc-x.cl-dixon.workers.dev --db myc-x
+```
+
+- Run `cf` commands that aren't about the instance (queues, d1 list…) from outside `instance/`,
+  because cf evaluates the instance config in that folder.
+- A fresh workers.dev deployment can answer 404 / error 1042 on some paths for a minute.
+- `test-owner.ts` claims the instance with a fake owner and prints an API token (for
+  `Authorization: Bearer`) and a session cookie (for a browser, e.g. Playwright with
+  `/opt/pw-browsers`). Use `CF_API_TOKEN` from the environment as a secret only on test instances.
+- Artifacts git remotes are reachable from this environment; push test code with a token from
+  `POST /api/repos/:repo/git-credentials` (header form: `git -c http.extraHeader="Authorization: Bearer $T"`).
+
 ## Workflow
 
 - Issues and planning: GitHub issues on `cldixon/mycelium`. Status and platform knowledge: the
