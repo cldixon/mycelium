@@ -116,3 +116,17 @@ export type ApiTokenInfo = {
   expiresAt: string;
   lastUsedAt: string | null;
 };
+
+/** POST /api/tokens: the secret appears in this response only. */
+export type CreatedApiToken = { token: string; apiToken: ApiTokenInfo };
+
+/** GET /api/settings (owner only). */
+export type InstanceSettings = {
+  /** INSTANCE_TITLE. */
+  title: string;
+  /** The @mycelium/instance version this Worker was built from. */
+  version: string;
+  owner: { did: string; handle: string | null };
+  /** True when CF_API_TOKEN is set, so new repos get push event subscriptions. */
+  pushEvents: boolean;
+};
