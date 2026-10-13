@@ -135,10 +135,12 @@ account credential.
 ```ts
 type Job =
   | { type: "diff"; remotes; repo: string; base: string; head: string }
-      // → { mergeBase, ahead, behind, mergeable: boolean, files: FileDiff[], commits: CommitInfo[] }
+      // → { mergeBase, ahead, behind, mergeable: boolean, conflicts: string[], baseSha, headSha,
+      //     files: FileDiff[], truncated: boolean, commits: CommitInfo[] }   (base/head: branch or sha)
   | { type: "merge"; remotes; repo: string; base: string; head: string;
       method: "merge" | "squash" | "rebase"; message: string; author: { name: string; email: string } }
-      // → { status: "merged", sha } | { status: "conflict", files: string[], diff: string }
+      // (+ optional headSha: refuse if head moved)
+      // → { status: "merged", sha, baseSha, headSha } | { status: "conflict", files: string[], diff: string }
   | { type: "workflow"; remotes; repo: string; sha: string; steps: { name: string; run: string }[];
       timeoutSec: number }
       // → { status: "success" | "failure" | "error", steps: { exitCode, log, durationMs }[] }
@@ -227,7 +229,9 @@ GET  /api/repos/:repo/commits/:ref?limit&offset   GET /api/repos/:repo/commit/:s
 GET  /api/repos/:repo/contributors           GET /api/repos/:repo/readme/:ref?path=
 GET  /api/repos/:repo/pulls?state=           POST /api/repos/:repo/pulls
 GET  /api/repos/:repo/pulls/:n               PATCH (title, body, state)   GET .../diff
-POST /api/repos/:repo/pulls/:n/merge {method}  POST .../comments {body}
+POST /api/repos/:repo/pulls/:n/merge {method, message?, headSha?}  (409 + files/diff on conflict)
+GET/POST /api/repos/:repo/pulls/:n/comments {body}
+GET  /api/repos/:repo/pulls/branches         GET /api/repos/:repo/pulls/compare?base=&head=
 GET  /api/repos/:repo/runs                   POST /api/repos/:repo/runs {workflow, ref}
 GET  /api/repos/:repo/runs/:n                GET /api/repos/:repo/workflows
 GET  /api/tokens · POST /api/tokens · DELETE /api/tokens/:id

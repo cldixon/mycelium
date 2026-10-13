@@ -333,6 +333,80 @@ export type ContributorList = {
 
 // --- Pulls (/api/repos/:repo/pulls) ------------------------------------------
 
+export type { CommitInfo, DiffResult, FileDiff } from "./jobs.js";
+
+export type PullRow = {
+  id: number;
+  repo: string;
+  number: number;
+  title: string;
+  body: string;
+  head: string;
+  base: string;
+  state: PullState;
+  author: string;
+  head_sha: string | null;
+  base_sha: string | null;
+  merge_sha: string | null;
+  merge_method: MergeMethod | null;
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
+  merged_at: string | null;
+};
+
+export type Pull = {
+  number: number;
+  title: string;
+  body: string;
+  /** Branch names: head is merged into base. */
+  head: string;
+  base: string;
+  state: PullState;
+  /** The owner's handle (or DID) when it was opened. */
+  author: string;
+  headSha: string | null;
+  /** While open, base's tip; once merged, base's tip just before the merge. */
+  baseSha: string | null;
+  mergeSha: string | null;
+  mergeMethod: MergeMethod | null;
+  createdAt: string;
+  updatedAt: string;
+  closedAt: string | null;
+  mergedAt: string | null;
+};
+
+export function toPull(row: PullRow): Pull {
+  return {
+    number: row.number,
+    title: row.title,
+    body: row.body,
+    head: row.head,
+    base: row.base,
+    state: row.state,
+    author: row.author,
+    headSha: row.head_sha,
+    baseSha: row.base_sha,
+    mergeSha: row.merge_sha,
+    mergeMethod: row.merge_method,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    closedAt: row.closed_at,
+    mergedAt: row.merged_at,
+  };
+}
+
+/** GET /pulls?state=open|closed|all. `closed` includes merged. */
+export type PullList = { pulls: Pull[]; counts: { open: number; closed: number } };
+
+export type PullComment = { id: number; author: string; body: string; createdAt: string };
+
+/** GET /pulls/branches: what a pull request can compare. */
+export type PullBranches = { defaultBranch: string; branches: RefInfo[] };
+
+/** POST /pulls/:n/merge, 409: nothing was pushed. */
+export type MergeConflict = { error: string; status: "conflict"; files: string[]; diff: string };
+
 // --- Actions (/api/repos/:repo/runs, workflows) ------------------------------
 
 export type RunRow = {
