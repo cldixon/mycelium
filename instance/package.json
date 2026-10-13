@@ -15,7 +15,8 @@
   "dependencies": {
     "@cloudflare/containers": "0.3.7",
     "@mycelium/platform": "workspace:*",
-    "hono": "^4.7.0"
+    "hono": "^4.7.0",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@types/bun": "^1.2.0",

@@ -1,4 +1,5 @@
 import type { Bindings } from "../api/bindings.js";
+import { triggerPushRuns } from "../actions/triggers.js";
 import type { PushCommit } from "../shared/types.js";
 
 /**
@@ -25,6 +26,6 @@ export type Push = {
   at: string;
 };
 
-export async function onPush(_env: Bindings, _repo: string, _push: Push): Promise<void> {
-  // Placeholder: nothing reacts to pushes yet.
+export async function onPush(env: Bindings, repo: string, push: Push): Promise<void> {
+  await triggerPushRuns(env, repo, push); // Actions: `on: push` workflows (never throws)
 }
