@@ -2,6 +2,7 @@
   import type { DiffResult, MergeMethod, Pull } from "$shared/types";
   import { Button, Field, Loading, Notice, StatusIcon, plural } from "@mycelium/ui";
   import { mergeOrConflict, runsFor, type RunSummary } from "$lib/pulls";
+  import { debounce, onLive } from "$lib/live.svelte";
 
   /**
    * Merge an open pull request: mergeability from the diff, workflow runs
@@ -45,6 +46,13 @@
     const sha = diff?.headSha ?? pull.headSha;
     runs = null;
     if (sha) runsFor(repo, sha).then((r) => (runs = r));
+  });
+  // Live: run events reload the head's runs.
+  $effect(() => {
+    const sha = diff?.headSha ?? pull.headSha;
+    if (!sha) return;
+    const reload = debounce(() => runsFor(repo, sha).then((r) => (runs = r)));
+    return onLive(repo, ["run"], reload);
   });
 
   async function merge() {

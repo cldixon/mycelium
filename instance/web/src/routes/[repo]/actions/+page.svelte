@@ -13,6 +13,7 @@
     timeAgo,
   } from "@mycelium/ui";
   import { actions, duration, isActive, poll } from "$lib/actions";
+  import { debounce, liveFeed, onLive } from "$lib/live.svelte";
 
   let { data } = $props();
   let repo = $derived(data.repo.name);
@@ -48,8 +49,13 @@
       .then((w) => (list = w))
       .catch((e) => (listError = e instanceof Error ? e.message : String(e)));
     if (owner) actions.refs(repo).then((r) => (branches = r?.branches ?? []));
-    return poll(loadRuns, () => runs?.some((r) => isActive(r.status)) ?? false);
+    // Polling is the fallback while the live socket is down.
+    return poll(
+      loadRuns,
+      () => liveFeed(repo).status !== "live" && (runs?.some((r) => isActive(r.status)) ?? false),
+    );
   });
+  $effect(() => onLive(repo, ["run"], debounce(loadRuns, 150)));
 
   function open(workflow: string) {
     running = running === workflow ? null : workflow;
