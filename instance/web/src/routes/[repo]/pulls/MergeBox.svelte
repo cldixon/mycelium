@@ -2,6 +2,7 @@
   import type { DiffResult, MergeMethod, Pull } from "$shared/types";
   import { Button, Field, Loading, Notice, StatusIcon, plural } from "@mycelium/ui";
   import { mergeOrConflict, runsFor, type RunSummary } from "$lib/pulls";
+  import RequiredChecks from "./RequiredChecks.svelte";
 
   /**
    * Merge an open pull request: mergeability from the diff, workflow runs
@@ -38,6 +39,8 @@
   let merging = $state(false);
   let error = $state<string | null>(null);
   let conflict = $state<{ files: string[]; diff: string } | null>(null);
+  /** Why required checks block the merge (RequiredChecks), or null. */
+  let checksBlocking = $state<string | null>(null);
 
   // --- Workflow runs (slot for the Actions feature: GET /runs?sha=) ---------
   let runs = $state<RunSummary[] | null>(null);
@@ -64,6 +67,14 @@
 </script>
 
 <section class="grid gap-3 border border-line p-4" aria-label="Merge">
+  <RequiredChecks
+    {repo}
+    number={pull.number}
+    headSha={diff?.headSha ?? pull.headSha}
+    {owner}
+    bind:blocking={checksBlocking}
+  />
+
   <!-- Workflow run status: shown only when the Actions feature answers /runs?sha= -->
   {#if runs && runs.length > 0}
     <ul class="grid gap-0.5" aria-label="Workflow runs">
@@ -112,10 +123,15 @@
           <textarea class="input" rows="2" bind:value={message}></textarea>
         </Field>
       {/if}
-      <div>
-        <Button variant="primary" onclick={merge} disabled={merging || !diff.mergeable}>
+      <div class="flex flex-wrap items-baseline gap-3">
+        <Button
+          variant="primary"
+          onclick={merge}
+          disabled={merging || !diff.mergeable || !!checksBlocking}
+        >
           {merging ? "Merging…" : (METHODS.find((m) => m.id === method)?.label ?? "Merge")}
         </Button>
+        {#if checksBlocking}<span class="text-meta text-muted">{checksBlocking}</span>{/if}
       </div>
     </div>
   {/if}
