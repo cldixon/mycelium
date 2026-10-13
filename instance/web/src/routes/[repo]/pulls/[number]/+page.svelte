@@ -11,6 +11,7 @@
     PageHeader,
     Readme,
     TabNav,
+    personName,
     plural,
   } from "@mycelium/ui";
   import { ago, pulls } from "$lib/pulls";
@@ -20,6 +21,11 @@
   import { debounce, onLive } from "$lib/live.svelte";
 
   let { data } = $props();
+  /** The owner by handle (else short DID); agents by their own name. */
+  const who = (author: string, kind?: string) =>
+    kind === "agent"
+      ? author
+      : personName(author, { did: data.status?.owner, handle: data.status?.handle });
 
   let repo = $derived(data.repo.name);
   let pull = $derived(data.pull);
@@ -89,7 +95,7 @@
   <PageHeader title="{pull.title} #{pull.number}">
     {#snippet status()}<span class="eyebrow">{pull.state}</span>{/snippet}
     {#snippet meta()}
-      <Actor name={pull.author} kind={pull.authorKind} />
+      <Actor name={who(pull.author, pull.authorKind)} kind={pull.authorKind} />
       {#if pull.state === "merged"}
         merged <span class="data">{pull.head}</span> into <span class="data">{pull.base}</span>
         {pull.mergedAt ? ago(pull.mergedAt) : ""}
@@ -109,7 +115,9 @@
     <div class="grid max-w-reading gap-4">
       <article class="grid gap-2 border-b border-line-soft pb-4">
         <p class="text-meta text-muted">
-          <Actor name={pull.author} kind={pull.authorKind} /> · {ago(pull.createdAt)}
+          <Actor name={who(pull.author, pull.authorKind)} kind={pull.authorKind} /> · {ago(
+            pull.createdAt,
+          )}
         </p>
         {#if pull.body.trim()}
           <Readme markdown={pull.body} />
@@ -121,7 +129,7 @@
       {#each data.comments as c (c.id)}
         <article class="grid gap-2 border-b border-line-soft pb-4">
           <p class="text-meta text-muted">
-            <Actor name={c.author} kind={c.authorKind} /> · {ago(c.createdAt)}
+            <Actor name={who(c.author, c.authorKind)} kind={c.authorKind} /> · {ago(c.createdAt)}
           </p>
           <Readme markdown={c.body} />
         </article>

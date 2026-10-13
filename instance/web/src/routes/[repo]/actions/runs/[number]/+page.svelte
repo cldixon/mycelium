@@ -15,7 +15,7 @@
     formatDateTime,
     shortSha,
   } from "@mycelium/ui";
-  import { actions, duration, isActive, poll } from "$lib/actions";
+  import { actions, actorName, duration, isActive, poll } from "$lib/actions";
   import { debounce, liveFeed, onLive } from "$lib/live.svelte";
 
   let { data } = $props();
@@ -46,7 +46,7 @@
     return poll(
       load,
       () => liveFeed(repo).status !== "live" && (run ? isActive(run.status) : false),
-      2000,
+      1500,
     );
   });
   $effect(() => {
@@ -113,7 +113,7 @@
     />
     {#if run.actor}
       <p class="text-meta text-muted">
-        Started by <Actor name={run.actor.name} kind={run.actor.kind} />
+        Started by <Actor name={actorName(run.actor, data.status)} kind={run.actor.kind} />
       </p>
     {/if}
 
@@ -143,7 +143,7 @@
             <LogView
               log={step.log}
               empty={step.status === "running"
-                ? "Running… output appears when the run finishes."
+                ? "Running… no output yet."
                 : step.status === "pending" || step.status === "skipped"
                   ? "Didn't run."
                   : "No output."}

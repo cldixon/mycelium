@@ -93,14 +93,6 @@ async function authorOf(c: C): Promise<{ name: string; kind: "owner" | "agent" }
   return actor.kind === "agent" ? actor : { name: await ownerName(c), kind: "owner" };
 }
 
-/** Branches to compare (the Code feature's /refs also lists them; this keeps pulls standalone). */
-pullsRoute.get("/pulls/branches", async (c) => {
-  const row = await readable(c);
-  if (!row) return notFound(c);
-  const refs = await repoRefs(c.env, row);
-  return c.json({ defaultBranch: refs.head ?? row.default_branch, branches: refs.branches });
-});
-
 /** Preview a pull request before opening it: ?base=&head= */
 pullsRoute.get("/pulls/compare", async (c) => {
   const row = await readable(c);

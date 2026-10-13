@@ -56,5 +56,16 @@ describe("getOwnerHandle", () => {
     await setSetting(db, "owner_handle_checked_at", new Date(0).toISOString());
     const failing = async () => new Response("down", { status: 503 });
     expect(await getOwnerHandle(db, { fetch: failing })).toBe("alice.dev");
+    // ... and doesn't ask again on the next request
+    const after: string[] = [];
+    expect(await getOwnerHandle(db, { fetch: plc("alice.new", after) })).toBe("alice.dev");
+    expect(after).toHaveLength(0);
+  });
+
+  test("refresh (sign-in) skips the cache", async () => {
+    const calls: string[] = [];
+    const fetch = plc("alice.new", calls);
+    expect(await getOwnerHandle(db, { fetch, refresh: true })).toBe("alice.new");
+    expect(calls).toHaveLength(1);
   });
 });

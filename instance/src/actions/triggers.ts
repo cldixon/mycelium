@@ -1,6 +1,6 @@
 import type { Bindings } from "../api/bindings.js";
 import { getDb, nextNumber } from "../db/migrations.js";
-import { getRepoRow, mintToken } from "../git/artifacts.js";
+import { getRepoRow, repoToken, withRepo } from "../git/artifacts.js";
 import { listRefs } from "../git/refs.js";
 import type { Push } from "../hooks/push.js";
 import { enqueueRun } from "../jobs/workflow.js";
@@ -42,6 +42,23 @@ export function pushedBranch(push: Pick<Push, "ref" | "after">): string | null {
   if (!push.ref.startsWith("refs/heads/")) return null;
   if (!push.after || ZERO_SHA.test(push.after)) return null;
   return push.ref.slice("refs/heads/".length);
+}
+
+/**
+ * What a push starts `on: push` workflows for: a branch (run ref: the branch
+ * name) or a tag (run ref: `refs/tags/<name>`), like GitHub, where `on: push`
+ * covers both. Null for deletions and other refs.
+ */
+export function pushTarget(
+  push: Pick<Push, "ref" | "after">,
+): { kind: "branch" | "tag"; ref: string } | null {
+  if (!push.after || ZERO_SHA.test(push.after)) return null;
+  const branch = pushedBranch(push);
+  if (branch) return { kind: "branch", ref: branch };
+  if (push.ref.startsWith("refs/tags/") && push.ref.length > "refs/tags/".length) {
+    return { kind: "tag", ref: push.ref };
+  }
+  return null;
 }
 
 /**
@@ -106,28 +123,53 @@ export async function createRuns(
 }
 
 /**
- * Push-triggered runs: workflows with `on: push` at the pushed branch head.
- * Never throws (a failure here must not stop other push handlers).
+ * Push-triggered runs: workflows with `on: push` at the pushed branch head
+ * or tag. Never throws (a failure here must not stop other push handlers).
  */
 export async function triggerPushRuns(
   env: Bindings,
   repo: string,
   push: Push,
 ): Promise<CreatedRun[]> {
-  const branch = pushedBranch(push);
-  if (!branch) return [];
+  const target = pushTarget(push);
+  if (!target) return [];
   try {
-    const { workflows, errors } = await loadWorkflows(env, repo, push.after!);
+    // An annotated tag's push names the tag object; run the commit it tags.
+    const sha =
+      target.kind === "tag" ? await tagCommit(env, repo, target.ref, push.after!) : push.after!;
+    const { workflows, errors } = await loadWorkflows(env, repo, sha);
     for (const e of errors) console.warn(`mycelium: ${repo} ${e.path}: ${e.error}`);
     return await createRuns(env, repo, workflowsFor(workflows, "push"), {
       event: "push",
-      ref: branch,
-      sha: push.after!,
+      ref: target.ref,
+      sha,
     });
   } catch (error) {
     console.error(`mycelium: push runs for ${repo} ${push.ref} failed`, error);
     return [];
   }
+}
+
+/**
+ * The commit a pushed tag points at: `after` when it is a commit (a
+ * lightweight tag), else the peeled sha the ref advertisement lists.
+ */
+async function tagCommit(
+  env: Pick<Bindings, "DB" | "ARTIFACTS">,
+  repo: string,
+  ref: string,
+  after: string,
+): Promise<string> {
+  const isCommit = await withRepo(env, repo, (r) => r.readCommit(after)).then(
+    (c) => !!c,
+    () => false,
+  );
+  if (isCommit) return after;
+  const row = await getRepoRow(env, repo);
+  if (!row) return after;
+  const refs = await listRefs(row.remote, await repoToken(env, repo));
+  const name = ref.slice("refs/tags/".length);
+  return refs.tags.find((t) => t.name === name)?.sha ?? after;
 }
 
 /**
@@ -172,7 +214,7 @@ export async function resolveRef(
   const row = await getRepoRow(env, repo);
   if (!row) return null;
   const name = ref?.trim() || row.default_branch;
-  const { token } = await mintToken(env, repo, "read", 120);
+  const token = await repoToken(env, repo);
   const refs = await listRefs(row.remote, token);
   const short = name.replace(/^refs\/(heads|tags)\//, "");
   const hit =

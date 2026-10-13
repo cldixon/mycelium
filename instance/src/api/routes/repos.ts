@@ -16,6 +16,7 @@ import {
   artifactsErrorStatus,
   deleteRepoRows,
   detectDefaultBranch,
+  forgetTokens,
   getRepoRow,
   isArtifactsError,
   mintToken,
@@ -234,6 +235,7 @@ reposRoute.delete("/:repo", ownerOnly, async (c) => {
   }
   await unsubscribeRepo(c.env.CF_API_TOKEN, row.subscription_id);
   await deleteRepoRows(await getDb(c.env.DB), name);
+  forgetTokens(name);
   await publish(c.env, name, { type: "repo", action: "deleted" }, row.visibility);
   return c.json({ deleted: name });
 });

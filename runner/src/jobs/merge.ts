@@ -38,7 +38,8 @@ export async function merge(job: MergeJob): Promise<MergeResult> {
   const start = job.method === "rebase" ? headSha : baseSha;
   const add = await repo("worktree", "add", "--detach", "-q", dir, start);
   if (add.code !== 0) throw new Error(`worktree add failed: ${add.err}`);
-  const git = gitIn(dir, ident);
+  // This job's credentials (repo.env) plus the merge identity, for the push.
+  const git = gitIn(dir, { ...repo.env, ...ident });
   try {
     let r;
     if (job.method === "merge") {
@@ -63,6 +64,13 @@ export async function merge(job: MergeJob): Promise<MergeResult> {
     const push = await git("push", "-q", remote, `HEAD:refs/heads/${job.base}`);
     if (push.code !== 0) {
       throw new Error(`push to ${job.base} failed (did it move? try again): ${push.err}`);
+    }
+    if (job.method === "rebase") {
+      // Point head at the rebased commits too, unless it moved meanwhile. The
+      // merge has landed either way, so a failure here is only logged.
+      const lease = `--force-with-lease=refs/heads/${job.head}:${headSha}`;
+      const moved = await git("push", "-q", lease, remote, `HEAD:refs/heads/${job.head}`);
+      if (moved.code !== 0) console.warn(`rebase: ${job.head} not updated: ${moved.err}`);
     }
     return { status: "merged", sha, baseSha, headSha };
   } finally {

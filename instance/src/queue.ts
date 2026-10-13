@@ -8,7 +8,7 @@ import type { PushCommit } from "./shared/types.js";
  * The queue consumer. Two queues, told apart by name (see config.ts):
  *
  * - `<worker>-events`: Artifacts events from per-repo subscriptions. Pushes
- *   are stored in `pushes` (idempotent on repo + after) and handed to
+ *   are stored in `pushes` (idempotent on repo + ref + after) and handed to
  *   `onPush` (src/hooks/push.ts).
  * - `<worker>-jobs`: `{ runId }` messages, handed to `runWorkflow`
  *   (src/jobs/workflow.ts).
@@ -58,7 +58,7 @@ export type ArtifactsEvent = {
   metadata: { eventTimestamp: string };
 };
 
-/** Store a push event and call onPush, once per (repo, after). */
+/** Store a push event and call onPush, once per (repo, ref, after): a tag on a pushed commit is its own push. */
 export async function handleEvent(env: Bindings, event: ArtifactsEvent): Promise<Push | null> {
   const repo = event.source?.repoName;
   if (event.type !== "cf.artifacts.repo.pushed" || !repo) return null;
@@ -70,7 +70,7 @@ export async function handleEvent(env: Bindings, event: ArtifactsEvent): Promise
     .prepare(
       `INSERT INTO pushes (repo, ref, before, after, commits, pusher, at)
        SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7
-       WHERE NOT EXISTS (SELECT 1 FROM pushes WHERE repo = ?1 AND after IS ?4)
+       WHERE NOT EXISTS (SELECT 1 FROM pushes WHERE repo = ?1 AND ref = ?2 AND after IS ?4)
        RETURNING id`,
     )
     .bind(

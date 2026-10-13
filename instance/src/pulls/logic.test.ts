@@ -37,6 +37,10 @@ describe("pull logic", () => {
       name: "did:plc:abc",
       email: "did-plc-abc@h",
     });
+    // An unresolved handle: the DID, shortened, as the commit's author name.
+    expect(ownerIdentity(null, "did:plc:7k3bqzxw4ylmrz2qkdh5u69x", "h").name).toBe(
+      "did:plc:7k3bqz…9x",
+    );
   });
 
   test("branch names", () => {

@@ -1,11 +1,4 @@
-import type {
-  DiffResult,
-  MergeMethod,
-  Pull,
-  PullBranches,
-  PullComment,
-  PullList,
-} from "$shared/types";
+import type { DiffResult, MergeMethod, Pull, PullComment, PullList } from "$shared/types";
 import { timeAgo } from "@mycelium/ui";
 import { get, request, seg } from "$lib/api";
 
@@ -24,8 +17,6 @@ export const pulls = {
     get<PullList>(`${base(repo)}?state=${state}`, fetcher),
   get: (repo: string, n: number, fetcher?: typeof fetch) =>
     get<Pull>(`${base(repo)}/${n}`, fetcher),
-  branches: (repo: string, fetcher?: typeof fetch) =>
-    get<PullBranches>(`${base(repo)}/branches`, fetcher),
   compare: (repo: string, baseBranch: string, head: string) =>
     get<DiffResult>(
       `${base(repo)}/compare?base=${encodeURIComponent(baseBranch)}&head=${encodeURIComponent(head)}`,

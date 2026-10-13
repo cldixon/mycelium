@@ -97,6 +97,12 @@ export type WorkflowJob = {
   sha: string;
   steps: { name: string; run: string; timeoutSec?: number }[];
   timeoutSec: number;
+  /**
+   * Set to run in the background: POST /jobs answers at once with a JobStatus
+   * and the Worker polls `GET /jobs/:id` for progress (step logs as they
+   * grow). Posting an id the runner already has answers that job's status.
+   */
+  id?: string;
 };
 /** Results for the steps that ran, in order (steps after a failure are left out). */
 export type WorkflowResult = {
@@ -104,6 +110,8 @@ export type WorkflowResult = {
   steps: WorkflowStepResult[];
   /** Set when status is "error": what went wrong outside the steps (e.g. checkout). */
   error?: string;
+  /** Where the time went, in the runner (for the Worker's log). */
+  timing?: { checkoutMs?: number; totalMs?: number };
 };
 export type WorkflowStepResult = {
   /** Null when the step was killed (timeout). */
@@ -115,6 +123,19 @@ export type WorkflowStepResult = {
   startedAt?: string;
   timedOut?: boolean;
 };
+
+/** A background workflow's progress: finished steps, and the one running now. */
+export type WorkflowProgress = {
+  /** Steps that finished, in order. */
+  steps: WorkflowStepResult[];
+  /** The step running now (index `steps.length`): its output so far (the tail). */
+  current: { startedAt: string; log: string } | null;
+};
+
+/** `GET /jobs/:id` (and POST /jobs with an id): a background job's state. */
+export type JobStatus =
+  | { id: string; done: false; progress: WorkflowProgress }
+  | { id: string; done: true; progress: WorkflowProgress; result: WorkflowResult };
 
 export type Job = PingJob | DiffJob | MergeJob | WorkflowJob;
 

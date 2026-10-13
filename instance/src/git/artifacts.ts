@@ -46,6 +46,35 @@ export async function mintToken(
   });
 }
 
+/** Read tokens are minted for this long, and reused while enough of it is left. */
+export const READ_TOKEN_TTL = 3600;
+
+const readTokens = new Map<string, { token: string; expires: number }>();
+
+/**
+ * A read token for `repo` with at least `minTtl` seconds left: from this
+ * isolate's cache, or freshly minted (for READ_TOKEN_TTL, or longer when
+ * `minTtl` needs it). Saves a mint per runner job and per ref listing.
+ */
+export async function repoToken(
+  env: Pick<Bindings, "ARTIFACTS">,
+  repo: string,
+  minTtl = 60,
+  now = Date.now(),
+): Promise<string> {
+  const hit = readTokens.get(repo);
+  if (hit && hit.expires - now > (minTtl + 30) * 1000) return hit.token;
+  const ttl = Math.max(READ_TOKEN_TTL, minTtl + 300);
+  const { token } = await mintToken(env, repo, "read", ttl);
+  readTokens.set(repo, { token, expires: now + ttl * 1000 });
+  return token;
+}
+
+/** Drop cached tokens for `repo` (it was deleted, or a token was refused). */
+export function forgetTokens(repo: string): void {
+  readTokens.delete(repo);
+}
+
 /** True for an ArtifactsError with this code (e.g. "NOT_FOUND", "ALREADY_EXISTS"). */
 export function isArtifactsError(error: unknown, code?: ArtifactsErrorCode): boolean {
   return (

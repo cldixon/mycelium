@@ -222,6 +222,8 @@ describe("diff and merge jobs", () => {
     expect(r.status).toBe("merged");
     expect(await show("%P %an %s")).toBe(`${before} dev add c`);
     expect(await show("%cn")).toBe("owner");
+    // ... and the head branch now points at the rebased commits
+    expect(await branchSha("r")).toBe(await branchSha("main"));
 
     // merge: a merge commit with two parents
     await sh(seed, ["git", "fetch", "-q"], ident);

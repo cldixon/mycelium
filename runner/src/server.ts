@@ -3,7 +3,9 @@
 // workflows, the repo's own commands) and answers JSON.
 import type { Job } from "../../instance/src/shared/jobs.ts";
 import { sh } from "./git.ts";
+import { startBackground, waitForStatus } from "./background.ts";
 import { handlers } from "./jobs/index.ts";
+import { workflow } from "./jobs/workflow.ts";
 
 export async function handle(req: Request): Promise<Response> {
   const url = new URL(req.url);
@@ -21,6 +23,10 @@ export async function handle(req: Request): Promise<Response> {
     } catch {
       return Response.json({ error: "body must be a JSON job" }, { status: 400 });
     }
+    if (job?.type === "workflow" && typeof job.id === "string" && job.id) {
+      startBackground({ ...job, id: job.id }, workflow);
+      return Response.json(await waitForStatus(job.id, waitMs(url)), { status: 202 });
+    }
     const handler = handlers[job?.type] as ((job: Job) => Promise<unknown>) | undefined;
     if (!handler)
       return Response.json({ error: `unknown job type: ${job?.type}` }, { status: 400 });
@@ -37,10 +43,23 @@ export async function handle(req: Request): Promise<Response> {
       );
     }
   }
+  const jobId = /^\/jobs\/([^/]+)$/.exec(url.pathname)?.[1];
+  if (req.method === "GET" && jobId) {
+    const status = await waitForStatus(decodeURIComponent(jobId), waitMs(url));
+    return status
+      ? Response.json(status)
+      : Response.json({ error: "no such job" }, { status: 404 });
+  }
   return Response.json({ error: "not found" }, { status: 404 });
 }
 
 if (import.meta.main) {
   Bun.serve({ port: Number(process.env.PORT ?? 8080), fetch: handle });
   console.log("mycelium runner on :8080");
+}
+
+/** `?wait=<ms>`: how long a background job request may wait for the job to finish (max 5 s). */
+function waitMs(url: URL): number {
+  const ms = Number(url.searchParams.get("wait"));
+  return Number.isFinite(ms) ? Math.min(Math.max(ms, 0), 5000) : 0;
 }
