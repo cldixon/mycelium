@@ -1,6 +1,7 @@
 import { getContainer } from "@cloudflare/containers";
 import type { Bindings } from "./api/bindings.js";
 import type { Job, JobError, JobResult, JobStatus, Remote, WorkflowJob } from "./shared/jobs.js";
+import { PROTOCOL_HEADER, RUNNER_PROTOCOL } from "./shared/jobs.js";
 import { mintToken, repoToken } from "./git/artifacts.js";
 
 export type * from "./shared/jobs.js";
@@ -16,6 +17,31 @@ export class RunnerError extends Error {
 }
 
 /**
+ * Fetch from the runner instance for `key`. Instances are keyed by the protocol
+ * version as well: a deploy doesn't replace warm instances, so after a protocol
+ * change jobs go to new instances (which start on the new image) and the old
+ * ones go idle. A version mismatch left over is reported, never guessed at.
+ */
+async function runnerFetch(
+  env: Pick<Bindings, "RUNNER">,
+  key: string,
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const container = getContainer(env.RUNNER, `${key}@p${RUNNER_PROTOCOL}`);
+  const res = await container.fetch(`http://runner${path}`, init);
+  const version = res.headers.get(PROTOCOL_HEADER);
+  if (version !== String(RUNNER_PROTOCOL)) {
+    await res.body?.cancel().catch(() => {});
+    throw new RunnerError(
+      502,
+      `runner image is out of date (protocol ${version ?? "1"}, expected ${RUNNER_PROTOCOL}); redeploy`,
+    );
+  }
+  return res;
+}
+
+/**
  * Run a job in the runner container. `key` picks the container instance: use
  * the repo name, so one repo's jobs share a warm container and its cached
  * clone. Cold starts take 17-30 s; warm jobs a few seconds.
@@ -25,8 +51,7 @@ export async function runJob<J extends Job>(
   key: string,
   job: J,
 ): Promise<JobResult<J>> {
-  const container = getContainer(env.RUNNER, key);
-  const res = await container.fetch("http://runner/jobs", {
+  const res = await runnerFetch(env, key, "/jobs", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(job),
@@ -49,8 +74,7 @@ export async function startJob(
   job: WorkflowJob & { id: string },
   waitMs = 1000,
 ): Promise<JobStatus> {
-  const container = getContainer(env.RUNNER, key);
-  const res = await container.fetch(`http://runner/jobs?wait=${waitMs}`, {
+  const res = await runnerFetch(env, key, `/jobs?wait=${waitMs}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(job),
@@ -73,8 +97,7 @@ export async function jobStatus(
   id: string,
   waitMs = 1000,
 ): Promise<JobStatus | null> {
-  const container = getContainer(env.RUNNER, key);
-  const res = await container.fetch(`http://runner/jobs/${encodeURIComponent(id)}?wait=${waitMs}`);
+  const res = await runnerFetch(env, key, `/jobs/${encodeURIComponent(id)}?wait=${waitMs}`);
   if (res.status === 404) return null;
   const body = (await res.json().catch(() => ({ error: `HTTP ${res.status}` }))) as
     JobStatus | JobError;
