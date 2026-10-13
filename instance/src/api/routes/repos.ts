@@ -6,6 +6,7 @@ import {
   toRepo,
   type CreateRepoInput,
   type GitCredentials,
+  type GitGrant,
   type RepoRow,
   type RepoRowWithPush,
   type UpdateRepoInput,
@@ -20,7 +21,7 @@ import {
   mintToken,
 } from "../../git/artifacts.js";
 import { subscribeRepo, unsubscribeRepo } from "../../git/subscriptions.js";
-import { canRead, isOwner, requireOwner, type AppEnv } from "../session.js";
+import { canRead, isOwner, requireOwner, type AppEnv, type OwnerEnv } from "../session.js";
 
 /**
  * Repos: list, create/import, read, update, delete, git credentials.
@@ -246,6 +247,10 @@ reposRoute.post("/:repo/git-credentials", ownerOnly, async (c) => {
   if (scope !== "read" && scope !== "write") {
     return c.json({ error: "scope must be read or write" }, 400);
   }
+  const actor = (c as unknown as Context<OwnerEnv>).var.actor;
+  if (scope === "write" && actor.scope === "read") {
+    return c.json({ error: "This API token is read-only: ask for scope read" }, 403);
+  }
   const ttl = input.ttl ?? GIT_TTL.default;
   if (!Number.isInteger(ttl) || ttl < GIT_TTL.min || ttl > GIT_TTL.max) {
     return c.json(
@@ -261,6 +266,24 @@ reposRoute.post("/:repo/git-credentials", ownerOnly, async (c) => {
       scope: minted.scope,
       expiresAt: minted.expiresAt,
     };
+    // Who holds git access, and until when (#17).
+    await (
+      await getDb(c.env.DB)
+    )
+      .prepare(
+        `INSERT INTO git_grants (repo, actor, actor_kind, token_id, scope, expires_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        name,
+        actor.name,
+        actor.kind,
+        actor.tokenId ?? null,
+        minted.scope,
+        minted.expiresAt,
+        new Date().toISOString(),
+      )
+      .run();
     return c.json(credentials);
   } catch (error) {
     if (isArtifactsError(error, "INVALID_TTL")) return c.json({ error: "ttl out of range" }, 400);
@@ -269,4 +292,32 @@ reposRoute.post("/:repo/git-credentials", ownerOnly, async (c) => {
     }
     throw error;
   }
+});
+
+/** Recently minted git credentials: who asked, for what, until when. Owner only. */
+reposRoute.get("/:repo/git-credentials", ownerOnly, async (c) => {
+  const name = c.req.param("repo");
+  if (!(await getRepoRow(c.env, name))) return c.json({ error: "Not found" }, 404);
+  const { results } = await (
+    await getDb(c.env.DB)
+  )
+    .prepare(
+      `SELECT actor, actor_kind, scope, created_at, expires_at FROM git_grants
+       WHERE repo = ? ORDER BY id DESC LIMIT 50`,
+    )
+    .bind(name)
+    .all<{
+      actor: string;
+      actor_kind: "owner" | "agent";
+      scope: "read" | "write";
+      created_at: string;
+      expires_at: string;
+    }>();
+  const grants: GitGrant[] = results.map((r) => ({
+    actor: { kind: r.actor_kind, name: r.actor },
+    scope: r.scope,
+    createdAt: r.created_at,
+    expiresAt: r.expires_at,
+  }));
+  return c.json({ grants });
 });

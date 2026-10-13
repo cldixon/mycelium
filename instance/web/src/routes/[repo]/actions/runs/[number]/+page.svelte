@@ -4,6 +4,7 @@
   import { page } from "$app/state";
   import type { RunDetail } from "$shared/types";
   import {
+    Actor,
     Button,
     Loading,
     LogView,
@@ -97,6 +98,11 @@
         { label: "Duration", value: duration(run.startedAt, run.finishedAt, now), mono: true },
       ]}
     />
+    {#if run.actor}
+      <p class="text-meta text-muted">
+        Started by <Actor name={run.actor.name} kind={run.actor.kind} />
+      </p>
+    {/if}
 
     <section class="grid gap-2" aria-label="Steps">
       <h2 class="text-title font-semibold">Steps</h2>

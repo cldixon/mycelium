@@ -42,7 +42,8 @@ instance/                 @mycelium/instance: the Worker (Hono)
   src/worker.ts           exports { fetch, queue } and the RunnerContainer Durable Object
   src/api/app.ts          Hono app; mounts routes; ASSETS fallback for the SPA
   src/api/routes/         auth.ts, repos.ts, code.ts, pulls.ts, actions.ts, settings.ts
-  src/api/session.ts      cookie session + requireOwner / canRead guards
+  src/api/session.ts      cookie session + requireOwner / canRead guards; the request's actor
+  src/mcp/                MCP server at /mcp for agents (server.ts tools, route.ts auth)
   src/auth/               owner + setup code, OAuth client, API tokens (from igloo)
   src/db/migrations.ts    ordered, append-only SQL migrations (self-applying)
   src/git/                artifacts.ts (binding helpers), refs.ts (smart HTTP), diff.ts (tree/line diff)
@@ -57,6 +58,7 @@ runner/                   the container: Dockerfile + src/server.ts + src/jobs/*
 packages/platform/        copied from igloo: migrate, settings, web-sessions, oauth, identity, testing
 packages/ui/              copied from igloo's @igloo/ui as @mycelium/ui: tokens + Svelte components
 packages/create-mycelium/ `bun create mycelium`: writes an owner's deploy folder (see instance/cli, scripts/pack.ts)
+skills/mycelium/SKILL.md  agent skill: working in an instance over MCP and git
 probes/                   throwaway exploration code; do not import from it
 ```
 
@@ -64,7 +66,7 @@ probes/                   throwaway exploration code; do not import from it
 
 `mycelium-instance` (name from config) serves:
 
-- `/api/*`, `/oauth/*`, `/health` → Hono. Everything else → the SPA (`ASSETS`,
+- `/api/*`, `/oauth/*`, `/health`, `/mcp` → Hono. Everything else → the SPA (`ASSETS`,
   `notFoundHandling: "single-page-application"`, `runWorkerFirst` for the API paths).
 - `queue()` consumes two queues: `<worker>-events` (Artifacts push events) and `<worker>-jobs`
   (our own async jobs: workflow runs).
@@ -86,6 +88,16 @@ subscriptions). Text vars: `INSTANCE_TITLE`.
 - Session cookie `mycelium_session` (sha256 stored in `web_sessions`).
 - API tokens (`myc_<hex>`, sha256 stored, always expiring) for scripts and agents:
   `Authorization: Bearer`. `requireOwner` accepts either.
+- Agents (#17): a token may name an agent (`api_tokens.agent`, lowercase `[a-z0-9._-]`, null =
+  the owner's own scripts) and has a scope (`write`, or `read`: no writes except read-only git
+  credentials). `requireOwner` sets `c.get("actor")` = `{ kind: "owner" | "agent", name,
+  tokenId?, scope }`. Pull requests and comments keep the name in `author` with `author_kind`;
+  manual runs record `actor`/`actor_kind`; minted git credentials are logged in `git_grants`.
+  The UI marks agents with `Actor` (`@mycelium/ui`, Lucide `bot`).
+- MCP (`/mcp`, `src/mcp/`): Tempra's pattern, a stateless `McpServer` +
+  `WebStandardStreamableHTTPServerTransport` per request, bearer API token only. Each tool calls
+  the REST API in process with the caller's token, so routes stay the one place for access
+  checks, validation and attribution. Read tokens don't see write tools.
 - Repos have `visibility`: `private` (owner only, default) or `public` (read-only for anyone).
   Every read route goes through `canRead(c, repo)`; every write through `requireOwner`.
 - Git access: the owner (or an agent with an API token) asks the instance for a short-lived
@@ -121,7 +133,10 @@ run_steps(run_id INTEGER NOT NULL, idx INTEGER NOT NULL, name TEXT NOT NULL, com
 
 Numbers (`pulls.number`, `runs.number`) come from `counters` per repo and kind, like GitHub.
 Before `0001`, `@mycelium/platform` applies its own `platform_0001_oauth` and
-`platform_0002_web_sessions`; `0001_platform` adds `settings` and `api_tokens`. `nextNumber(db,
+`platform_0002_web_sessions`; `0001_platform` adds `settings` and `api_tokens`; `0003_agents`
+adds `api_tokens.agent`/`scope`, `pulls.author_kind`, `pull_comments.author_kind`,
+`runs.actor`/`actor_kind` and `git_grants(repo, actor, actor_kind, token_id, scope, expires_at,
+created_at)`. `nextNumber(db,
 repo, kind)` in `src/db/migrations.ts` claims the next number atomically.
 
 ## Runner container protocol
@@ -234,7 +249,9 @@ GET/POST /api/repos/:repo/pulls/:n/comments {body}
 GET  /api/repos/:repo/pulls/branches         GET /api/repos/:repo/pulls/compare?base=&head=
 GET  /api/repos/:repo/runs                   POST /api/repos/:repo/runs {workflow, ref}
 GET  /api/repos/:repo/runs/:n                GET /api/repos/:repo/workflows
-GET  /api/tokens · POST /api/tokens · DELETE /api/tokens/:id
+GET  /api/repos/:repo/git-credentials        recent grants: who minted git credentials (owner)
+GET  /api/tokens · POST /api/tokens {name, days, agent?, scope?} · DELETE /api/tokens/:id
+POST /mcp                                    MCP (Streamable HTTP, JSON responses; bearer API token)
 ```
 
 In the code routes `:ref` is the rest of the URL path, so branch names with `/` need no escaping

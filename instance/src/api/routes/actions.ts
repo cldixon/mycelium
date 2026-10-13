@@ -123,9 +123,11 @@ actionsRoute.post("/runs", requireOwner, async (c: Context<OwnerEnv>) => {
       400,
     );
   }
+  const { kind, name: actor } = c.var.actor;
   const [run] = await createRuns(c.env, row.name, workflowsFor([wf], "manual"), {
     event: "manual",
     ...resolved,
+    actor: { kind, name: actor },
   });
   return c.json(await runDetail(c.var.db, run!.id), 201);
 });
@@ -159,6 +161,7 @@ actionsRoute.post("/runs/:number/rerun", requireOwner, async (c: Context<OwnerEn
     ref: old.ref,
     sha: old.sha,
     pullNumber: old.pull_number,
+    actor: { kind: c.var.actor.kind, name: c.var.actor.name },
   });
   return c.json(await runDetail(c.var.db, run!.id), 201);
 });

@@ -149,7 +149,7 @@ export function defineMycelium({ dir, entrypoint }: { dir: string; entrypoint?: 
         // runWorkerFirst claims the API paths so they reach the Worker instead.
         assets: {
           notFoundHandling: "single-page-application",
-          runWorkerFirst: ["/api/*", "/oauth/*", "/health"],
+          runWorkerFirst: ["/api/*", "/oauth/*", "/health", "/mcp"],
         },
 
         // Secrets (SETUP_CODE, OAUTH_SIGNING_KEY, CF_API_TOKEN) are optional

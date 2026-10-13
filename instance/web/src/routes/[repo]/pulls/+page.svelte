@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, EmptyState, TabNav } from "@mycelium/ui";
+  import { Actor, Button, EmptyState, TabNav } from "@mycelium/ui";
   import { ago } from "$lib/pulls";
 
   let { data } = $props();
@@ -37,7 +37,7 @@
           <p class="text-meta text-muted">
             #{pull.number} · <span class="data">{pull.head}</span> into
             <span class="data">{pull.base}</span> · opened {ago(pull.createdAt)} by
-            {pull.author}
+            <Actor name={pull.author} kind={pull.authorKind} />
             {#if pull.mergedAt}· merged {ago(pull.mergedAt)}{:else if pull.closedAt}· closed {ago(
                 pull.closedAt,
               )}{/if}

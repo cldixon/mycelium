@@ -21,10 +21,12 @@
   },
   "dependencies": {
     "@cloudflare/containers": "0.3.7",
+    "@modelcontextprotocol/sdk": "^1.31.0",
     "@mycelium/platform": "workspace:*",
     "diff": "^9.0.0",
     "hono": "^4.7.0",
-    "yaml": "^2.9.1"
+    "yaml": "^2.9.1",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/bun": "^1.2.0",

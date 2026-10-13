@@ -3,6 +3,7 @@
   import { goto } from "$app/navigation";
   import type { RefInfo, Run, WorkflowList } from "$shared/types";
   import {
+    Actor,
     Button,
     EmptyState,
     Loading,
@@ -107,6 +108,7 @@
                 <td class="nowrap">
                   {run.event}{#if run.pullNumber}
                     · <a href="/{repo}/pulls/{run.pullNumber}">#{run.pullNumber}</a>{/if}
+                  {#if run.actor}by <Actor name={run.actor.name} kind={run.actor.kind} />{/if}
                 </td>
                 <td class="data nowrap">
                   {run.ref} · <a href="/{repo}/commit/{run.sha}">{shortSha(run.sha)}</a>

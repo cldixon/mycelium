@@ -1,4 +1,5 @@
 export { default as AccountMenu } from "./components/AccountMenu.svelte";
+export { default as Actor } from "./components/Actor.svelte";
 export { default as Brand } from "./components/Brand.svelte";
 export { default as BranchSelect } from "./components/BranchSelect.svelte";
 export { default as Breadcrumbs } from "./components/Breadcrumbs.svelte";

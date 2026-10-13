@@ -1,5 +1,5 @@
 import { nextNumber } from "../db/migrations.js";
-import type { PullComment, PullRow, PullState } from "../shared/types.js";
+import type { ActorKind, PullComment, PullRow, PullState } from "../shared/types.js";
 
 /** D1 access for pull requests and their comments. `db` is already migrated. */
 
@@ -50,6 +50,8 @@ export async function insertPull(
     head: string;
     base: string;
     author: string;
+    /** Whether author is the owner or an agent (default owner). */
+    authorKind?: ActorKind;
     headSha: string;
     baseSha: string;
   },
@@ -58,11 +60,24 @@ export async function insertPull(
   const now = new Date().toISOString();
   return (await db
     .prepare(
-      `INSERT INTO pulls (repo, number, title, body, head, base, state, author, head_sha, base_sha,
-                          created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?) RETURNING *`,
+      `INSERT INTO pulls (repo, number, title, body, head, base, state, author, author_kind,
+                          head_sha, base_sha, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?) RETURNING *`,
     )
-    .bind(p.repo, number, p.title, p.body, p.head, p.base, p.author, p.headSha, p.baseSha, now, now)
+    .bind(
+      p.repo,
+      number,
+      p.title,
+      p.body,
+      p.head,
+      p.base,
+      p.author,
+      p.authorKind ?? "owner",
+      p.headSha,
+      p.baseSha,
+      now,
+      now,
+    )
     .first<PullRow>())!;
 }
 
@@ -80,11 +95,19 @@ export async function updatePull(
     .first<PullRow>())!;
 }
 
-type CommentRow = { id: number; pull_id: number; author: string; body: string; created_at: string };
+type CommentRow = {
+  id: number;
+  pull_id: number;
+  author: string;
+  author_kind: ActorKind | null;
+  body: string;
+  created_at: string;
+};
 
 const toComment = (r: CommentRow): PullComment => ({
   id: r.id,
   author: r.author,
+  authorKind: r.author_kind ?? "owner",
   body: r.body,
   createdAt: r.created_at,
 });
@@ -102,12 +125,14 @@ export async function addComment(
   pullId: number,
   author: string,
   body: string,
+  authorKind: ActorKind = "owner",
 ): Promise<PullComment> {
   const row = await db
     .prepare(
-      "INSERT INTO pull_comments (pull_id, author, body, created_at) VALUES (?, ?, ?, ?) RETURNING *",
+      `INSERT INTO pull_comments (pull_id, author, author_kind, body, created_at)
+       VALUES (?, ?, ?, ?, ?) RETURNING *`,
     )
-    .bind(pullId, author, body, new Date().toISOString())
+    .bind(pullId, author, authorKind, body, new Date().toISOString())
     .first<CommentRow>();
   return toComment(row!);
 }

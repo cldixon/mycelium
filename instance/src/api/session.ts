@@ -3,22 +3,35 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import {
   WEB_SESSION_COOKIE,
   WEB_SESSION_TTL_MS,
+  getSetting,
   getWebSession,
   isLoopback,
 } from "@mycelium/platform";
 import { getOwner } from "../auth/owner.js";
-import { bearerToken, verifyApiToken } from "../auth/tokens.js";
+import {
+  bearerToken,
+  verifyApiToken,
+  type TokenIdentity,
+  type TokenScope,
+} from "../auth/tokens.js";
 import { getDb } from "../db/migrations.js";
-import type { RepoRow } from "../shared/types.js";
+import type { Actor, RepoRow } from "../shared/types.js";
 import type { Bindings } from "./bindings.js";
 
 /** Hono env for every route. */
 export type AppEnv = { Bindings: Bindings };
 
-/** Hono env after requireOwner: the migrated db and the owner's DID are set. */
+/**
+ * Who is acting on an owner route: the owner (browser session or an owner
+ * token) or a named agent (an API token with an agent name). `scope` is what
+ * the token allows; a browser session is `write`.
+ */
+export type RequestActor = Actor & { tokenId?: string; scope: TokenScope };
+
+/** Hono env after requireOwner: the migrated db, the owner's DID and the actor are set. */
 export type OwnerEnv = {
   Bindings: Bindings;
-  Variables: { db: D1Database; ownerDid: string; viaToken: boolean };
+  Variables: { db: D1Database; ownerDid: string; viaToken: boolean; actor: RequestActor };
 };
 
 export function originOf(c: Context): string {
@@ -43,19 +56,55 @@ export function sessionToken(c: Context): string | undefined {
   return getCookie(c, WEB_SESSION_COOKIE);
 }
 
-type Viewer = { owner: string | null; isOwner: boolean; viaToken: boolean; badToken: boolean };
+type Viewer = {
+  owner: string | null;
+  isOwner: boolean;
+  viaToken: boolean;
+  badToken: boolean;
+  /** The API token used, when it is live. */
+  token: TokenIdentity | null;
+};
 
 /** Who is asking: the owner (by cookie or API token) or anyone else. */
 export async function viewer(c: Context<any>, db: D1Database): Promise<Viewer> {
   const owner = await getOwner(db);
-  const token = bearerToken(c.req.header("authorization"));
-  if (token) {
-    const ok = owner !== null && (await verifyApiToken(db, token));
-    return { owner, isOwner: ok, viaToken: true, badToken: !ok };
+  const bearer = bearerToken(c.req.header("authorization"));
+  if (bearer) {
+    const token = owner !== null ? await verifyApiToken(db, bearer) : null;
+    return { owner, isOwner: token !== null, viaToken: true, badToken: !token, token };
   }
   const did = await getWebSession(db, sessionToken(c));
-  return { owner, isOwner: did !== null && did === owner, viaToken: false, badToken: false };
+  return {
+    owner,
+    isOwner: did !== null && did === owner,
+    viaToken: false,
+    badToken: false,
+    token: null,
+  };
 }
+
+/**
+ * The actor behind an owner request: a token's agent, or the owner, named by
+ * the cached handle (never resolved here) or the DID.
+ */
+export async function actorOf(
+  db: D1Database,
+  owner: string,
+  token: TokenIdentity | null,
+): Promise<RequestActor> {
+  if (token?.agent) {
+    return { kind: "agent", name: token.agent, tokenId: token.id, scope: token.scope };
+  }
+  return {
+    kind: "owner",
+    name: (await getSetting(db, "owner_handle")) ?? owner,
+    ...(token && { tokenId: token.id }),
+    scope: token?.scope ?? "write",
+  };
+}
+
+/** The one write a read-only token may make: read-only git credentials (the route checks). */
+const READ_TOKEN_POSTS = /\/git-credentials$/;
 
 /**
  * Owner API guard: the owner's browser session, or an API token.
@@ -74,9 +123,19 @@ export const requireOwner: MiddlewareHandler<OwnerEnv> = async (c, next) => {
   const who = await viewer(c, db);
   if (who.badToken) return c.json({ error: "Invalid or expired API token" }, 401);
   if (!who.isOwner) return c.json({ error: "Sign in as the instance owner" }, 401);
+  const actor = await actorOf(db, who.owner!, who.token);
+  if (
+    actor.scope === "read" &&
+    c.req.method !== "GET" &&
+    c.req.method !== "HEAD" &&
+    !READ_TOKEN_POSTS.test(new URL(c.req.url).pathname)
+  ) {
+    return c.json({ error: "This API token is read-only" }, 403);
+  }
   c.set("db", db);
   c.set("ownerDid", who.owner!);
   c.set("viaToken", who.viaToken);
+  c.set("actor", actor);
   await next();
 };
 
