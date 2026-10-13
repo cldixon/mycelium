@@ -22,6 +22,7 @@
   "dependencies": {
     "@cloudflare/containers": "0.3.7",
     "@mycelium/platform": "workspace:*",
+    "diff": "^9.0.0",
     "hono": "^4.7.0",
     "yaml": "^2.9.1"
   },

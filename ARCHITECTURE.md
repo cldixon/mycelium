@@ -224,7 +224,7 @@ POST /api/repos/:repo/git-credentials {scope, ttl}
 GET  /api/repos/:repo/refs                   branches + tags with shas
 GET  /api/repos/:repo/tree/:ref?path=        GET /api/repos/:repo/blob/:ref?path=   (raw: ?raw=1)
 GET  /api/repos/:repo/commits/:ref?limit&offset   GET /api/repos/:repo/commit/:sha (with diff)
-GET  /api/repos/:repo/contributors
+GET  /api/repos/:repo/contributors           GET /api/repos/:repo/readme/:ref?path=
 GET  /api/repos/:repo/pulls?state=           POST /api/repos/:repo/pulls
 GET  /api/repos/:repo/pulls/:n               PATCH (title, body, state)   GET .../diff
 POST /api/repos/:repo/pulls/:n/merge {method}  POST .../comments {body}
@@ -232,6 +232,10 @@ GET  /api/repos/:repo/runs                   POST /api/repos/:repo/runs {workflo
 GET  /api/repos/:repo/runs/:n                GET /api/repos/:repo/workflows
 GET  /api/tokens · POST /api/tokens · DELETE /api/tokens/:id
 ```
+
+In the code routes `:ref` is the rest of the URL path, so branch names with `/` need no escaping
+(`/tree/feature/x?path=src`); the file path always goes in `?path=`. `/refs` (`?commits=1` adds
+each branch's tip commit) lives in `code.ts`.
 
 ## File ownership (parallel feature work)
 
