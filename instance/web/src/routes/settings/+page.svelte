@@ -121,7 +121,8 @@
                 <code class="data">Authorization: Bearer …</code>.
               </p>
               <Field label="Claude Code">
-                <pre class="data overflow-x-auto border border-line p-2">{setup.claudeCode}</pre>
+                <pre
+                  class="data border border-line p-2 break-all whitespace-pre-wrap">{setup.claudeCode}</pre>
               </Field>
               <div><CopyButton value={setup.claudeCode} label="copy command" /></div>
               <Field label="MCP client config (JSON)">
@@ -192,9 +193,11 @@
               />
             </Field>
           </div>
-          <Field label="Agent (optional)">
-            <input class="input" bind:value={tokenAgent} placeholder="claude-1" maxlength="39" />
-          </Field>
+          <div class="flex-1">
+            <Field label="Agent (optional)">
+              <input class="input" bind:value={tokenAgent} placeholder="claude-1" maxlength="39" />
+            </Field>
+          </div>
           <Field label="Access">
             <select class="input" bind:value={tokenScope}>
               <option value="write">read and write</option>
