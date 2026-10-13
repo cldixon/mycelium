@@ -34,6 +34,8 @@ Proven by the probes in `probes/` and written up in the Tempra library `cl_dixon
 package.json              workspaces: instance, instance/web, runner, packages/*
 instance/                 @mycelium/instance: the Worker (Hono)
   config.ts               defineMycelium(): the ONLY place the cf config is built
+  cli/mycelium.ts         the `mycelium` CLI: setup, deploy, secrets, dev
+  scripts/pack.ts         builds the publishable instance package (package/ templates) + create-mycelium
   cloudflare.config.ts    calls defineMycelium with the source entrypoint
   wrangler.config.ts      assets dir + dev host/port (cf still bundles via wrangler)
   mycelium.config.example.json
@@ -54,7 +56,7 @@ instance/web/             SvelteKit SPA (adapter-static, ssr=false), served by W
 runner/                   the container: Dockerfile + src/server.ts + src/jobs/*.ts
 packages/platform/        copied from igloo: migrate, settings, web-sessions, oauth, identity, testing
 packages/ui/              copied from igloo's @igloo/ui as @mycelium/ui: tokens + Svelte components
-packages/create-mycelium/ scaffolder (later)
+packages/create-mycelium/ `bun create mycelium`: writes an owner's deploy folder (see instance/cli, scripts/pack.ts)
 probes/                   throwaway exploration code; do not import from it
 ```
 
