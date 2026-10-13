@@ -1,7 +1,20 @@
 node_modules/
 .cloudflare/
+.wrangler/
+.svelte-kit/
+build/
 dist/
+.DS_Store
 *.token
 *.env
+.env
+.env.*
+!.env.example
 probes/git-runner/container/bun
 .claude/worktrees/
+
+# The bun binary copied in before building the runner image
+runner/bun
+
+# Each owner's instance settings
+instance/mycelium.config.json

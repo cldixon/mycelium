@@ -1,0 +1,4 @@
+[install]
+# Each workspace gets its own node_modules. cf looks for its delegates
+# (wrangler) next to the package that declares them, not hoisted to the root.
+linker = "isolated"

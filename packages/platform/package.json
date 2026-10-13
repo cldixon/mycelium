@@ -1,0 +1,26 @@
+{
+  "name": "@mycelium/platform",
+  "version": "0.1.0",
+  "description": "Shared Worker plumbing: D1 migrations, settings, AT Protocol identity and OAuth, web sessions",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@atproto-labs/handle-resolver": "^0.4.10",
+    "@atproto/jwk-jose": "^0.2.4",
+    "@atproto/jwk-webcrypto": "^0.3.4",
+    "@atproto/oauth-client": "^0.8.9"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260908.1",
+    "@types/bun": "^1.2.0",
+    "miniflare": "^4.20260730.0",
+    "typescript": "^5.9.3"
+  }
+}

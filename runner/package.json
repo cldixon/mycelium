@@ -1,0 +1,15 @@
+{
+  "name": "@mycelium/runner",
+  "version": "0.1.0",
+  "description": "The runner container: git, diffs, merges and workflow steps, driven by the instance",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun run src/server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "name": "@mycelium/instance",
+  "version": "0.1.0",
+  "description": "A self-deployed Mycelium instance: git repos on Cloudflare Artifacts, pull requests, actions",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun scripts/dev.ts",
+    "build": "cd web && bun --bun vite build",
+    "deploy:dry": "cf deploy --dry-run",
+    "types": "cf workers types",
+    "typecheck": "cf workers types && tsc --noEmit",
+    "check": "cd web && bun run check"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "0.3.7",
+    "@mycelium/platform": "workspace:*",
+    "hono": "^4.7.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "cf": "1.0.0-beta.14",
+    "miniflare": "^4.20260730.0",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.149.0"
+  }
+}

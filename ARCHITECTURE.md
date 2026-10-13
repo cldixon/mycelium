@@ -45,8 +45,11 @@ instance/                 @mycelium/instance: the Worker (Hono)
   src/db/migrations.ts    ordered, append-only SQL migrations (self-applying)
   src/git/                artifacts.ts (binding helpers), refs.ts (smart HTTP), diff.ts (tree/line diff)
   src/runner.ts           client for the runner container (typed jobs)
-  src/queue.ts            queue consumer: push events + job queue
-  src/shared/types.ts     API types shared with the web app
+  src/queue.ts            queue consumer: push events + job queue (don't edit; use the hooks below)
+  src/hooks/push.ts       onPush(env, repo, push): extension point called once per new push
+  src/jobs/workflow.ts    runWorkflow(env, runId): extension point for jobs-queue messages; enqueueRun
+  src/shared/types.ts     API types shared with the web app (`$shared/types` there)
+  src/shared/jobs.ts      runner Job/result types, shared with runner/ (type-only imports)
 instance/web/             SvelteKit SPA (adapter-static, ssr=false), served by Workers Static Assets
 runner/                   the container: Dockerfile + src/server.ts + src/jobs/*.ts
 packages/platform/        copied from igloo: migrate, settings, web-sessions, oauth, identity, testing
@@ -63,7 +66,11 @@ probes/                   throwaway exploration code; do not import from it
   `notFoundHandling: "single-page-application"`, `runWorkerFirst` for the API paths).
 - `queue()` consumes two queues: `<worker>-events` (Artifacts push events) and `<worker>-jobs`
   (our own async jobs: workflow runs).
-- Durable Object `RunnerContainer` (container `mycelium-runner`, image from `runner/Dockerfile`).
+- Durable Object `RunnerContainer` (container `<worker>-runner`, e.g. `mycelium-instance-runner`;
+  container names are account-wide, so it follows the Worker name; image from `runner/Dockerfile`).
+
+Secrets are not declared in the cf config (declared secrets are required); they are optional
+fields on the hand-written `Bindings` type in `src/api/bindings.ts`.
 
 Bindings: `DB` (D1), `ARTIFACTS` (namespace from config, default = worker name), `ASSETS`,
 `JOBS` (queue producer), `RUNNER` (DO namespace). Secrets: `SETUP_CODE`, `OAUTH_SIGNING_KEY`
@@ -111,7 +118,9 @@ run_steps(run_id INTEGER NOT NULL, idx INTEGER NOT NULL, name TEXT NOT NULL, com
 ```
 
 Numbers (`pulls.number`, `runs.number`) come from `counters` per repo and kind, like GitHub.
-Migration `0001` is igloo's platform tables (settings, OAuth, web sessions, api tokens).
+Before `0001`, `@mycelium/platform` applies its own `platform_0001_oauth` and
+`platform_0002_web_sessions`; `0001_platform` adds `settings` and `api_tokens`. `nextNumber(db,
+repo, kind)` in `src/db/migrations.ts` claims the next number atomically.
 
 ## Runner container protocol
 
@@ -132,6 +141,10 @@ type Job =
       timeoutSec: number }
       // → { status: "success" | "failure" | "error", steps: { exitCode, log, durationMs }[] }
 ```
+
+Besides the three jobs above there is `{ type: "ping" }` → `{ ok, git, bun }` (health). Types live
+in `instance/src/shared/jobs.ts`. On failure the runner answers `{ error }` with a 4xx/5xx and
+`runJob` throws `RunnerError`.
 
 `runner/src/jobs/<type>.ts` exports a handler; `runner/src/server.ts` dispatches by `type` from
 a registry (`runner/src/jobs/index.ts`). Shared helper `runner/src/git.ts` sets up a scratch repo
@@ -192,6 +205,10 @@ Routes (repo names are a single path segment; the owner's handle is shown, not r
 /:repo/settings                    description, visibility, default branch, git credentials, delete
 ```
 
+Static routes win over `[repo]`, so repo names `signin`, `settings`, `api`, `oauth` and `health`
+must be rejected at creation. Branch names may contain `/`; `tree/[ref]/[...path]` has to resolve
+the longest matching ref (from `/refs`).
+
 Repo header: `handle / repo` + visibility, then tabs: Code · Pull requests · Actions ·
 Contributors · Settings (Settings only for the owner).
 
@@ -213,6 +230,26 @@ GET  /api/repos/:repo/runs                   POST /api/repos/:repo/runs {workflo
 GET  /api/repos/:repo/runs/:n                GET /api/repos/:repo/workflows
 GET  /api/tokens · POST /api/tokens · DELETE /api/tokens/:id
 ```
+
+## File ownership (parallel feature work)
+
+The scaffold fixes these boundaries so features can be built in parallel without touching each
+other's files. Shared files (`app.ts`, `queue.ts`, `session.ts`, `migrations.ts` except new
+migrations appended at the end, `config.ts`, `packages/*`) change only when a feature truly needs
+it, in a small separate commit.
+
+| Feature  | Worker                                                                                   | Web (`instance/web/src`)                                                    | Runner                   |
+| -------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | ------------------------ |
+| Repos    | `api/routes/repos.ts` (+ subscriptions, `git/artifacts.ts` additions)                    | `routes/+page.svelte`, `routes/[repo]/settings/`, `lib/repos.ts`            | -                        |
+| Code     | `api/routes/code.ts`, `git/diff.ts`                                                      | `routes/[repo]/+page.svelte`, `tree/`, `blob/`, `commits/`, `commit/`, `branches/`, `contributors/` | -                        |
+| Pulls    | `api/routes/pulls.ts`, `hooks/push.ts` (PR head updates)                                 | `routes/[repo]/pulls/`                                                      | `jobs/diff.ts`, `jobs/merge.ts` |
+| Actions  | `api/routes/actions.ts`, `jobs/workflow.ts`, `hooks/push.ts` (push-triggered runs)       | `routes/[repo]/actions/`                                                    | `jobs/workflow.ts`       |
+| Settings | `api/routes/settings.ts`                                                                 | `routes/settings/`                                                          | -                        |
+
+Each feature adds its API types in its own section of `src/shared/types.ts` and its client calls
+in its own `instance/web/src/lib/<feature>.ts` (using `request` from `$lib/api`). Runner job
+handlers are registered with one line each in `runner/src/jobs/index.ts`. `hooks/push.ts` is
+shared by Pulls and Actions: each should put its logic in its own module and add one call there.
 
 ## Conventions
 

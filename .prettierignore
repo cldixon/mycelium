@@ -1,0 +1,17 @@
+node_modules/
+bun.lock
+
+# Build output and generated files
+build/
+.svelte-kit/
+.cloudflare/
+.wrangler/
+dist/
+
+# Hand-authored instructions, kept verbatim
+.claude/
+CLAUDE.md
+ARCHITECTURE.md
+
+# Throwaway exploration code, formatted its own way
+probes/

@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // A library compiled into both Workers: the runtime types come from
+    // @cloudflare/workers-types here, and from each Worker's generated types there.
+    "types": ["@cloudflare/workers-types", "@types/bun"],
+    "noEmit": true,
+    "declaration": false,
+    "allowImportingTsExtensions": true
+  },
+  "include": ["src/**/*.ts"]
+}

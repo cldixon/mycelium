@@ -1,0 +1,38 @@
+{
+  "name": "@mycelium/ui",
+  "version": "0.1.0",
+  "description": "Mycelium's design system: tokens, base styles and Svelte components",
+  "type": "module",
+  "private": true,
+  "svelte": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "svelte": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./format": "./src/format.ts",
+    "./types": "./src/types.ts",
+    "./mycelium.css": {
+      "style": "./src/mycelium.css",
+      "default": "./src/mycelium.css"
+    }
+  },
+  "scripts": {
+    "typecheck": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings"
+  },
+  "dependencies": {
+    "@lucide/svelte": "^1.55.0",
+    "bits-ui": "^2.19.5",
+    "marked": "^15.0.0"
+  },
+  "peerDependencies": {
+    "svelte": "^5.51.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "svelte": "^5.51.0",
+    "svelte-check": "^4.3.6",
+    "typescript": "^5.9.3"
+  }
+}
