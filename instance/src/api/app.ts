@@ -5,6 +5,7 @@ import { codeRoute } from "./routes/code.js";
 import { pullsRoute } from "./routes/pulls.js";
 import { actionsRoute } from "./routes/actions.js";
 import { settingsRoute } from "./routes/settings.js";
+import { liveRoute } from "./routes/live.js";
 import { checksRoute } from "./routes/checks.js";
 import { mcpEndpoint } from "../mcp/route.js";
 import type { AppEnv } from "./session.js";
@@ -26,6 +27,7 @@ app.route("/api/repos/:repo", actionsRoute); //    .../runs/*, .../workflows
 app.route("/api/repos/:repo", checksRoute); //     .../checks/required, .../pulls/:n/checks
 app.route("/api", settingsRoute); //               /api/tokens/*
 app.all("/mcp", mcpEndpoint(app)); //              MCP for agents (bearer API token)
+app.route("/api", liveRoute); //                   /api/live, /api/repos/:repo/live, /api/activity
 
 app.onError((error, c) => {
   console.error("mycelium: unhandled error", error);

@@ -2,6 +2,7 @@
   import type { ChecksEvaluation } from "$shared/types";
   import { Button, Notice, StatusIcon } from "@mycelium/ui";
   import { blockingReason, checks } from "$lib/checks";
+  import { debounce, liveFeed, onLive } from "$lib/live.svelte";
 
   /**
    * The pull request's required checks (GET /pulls/:n/checks) as a
@@ -53,8 +54,12 @@
     load();
   });
 
-  // Poll while a check is pending.
+  // Live: run events reload the checks.
+  $effect(() => onLive(repo, ["run"], debounce(load, 200)));
+
+  // Poll while a check is pending and the live socket is down.
   $effect(() => {
+    if (liveFeed(repo).status === "live") return;
     if (!evaluation?.required.some((c) => c.status === "pending")) return;
     const timer = setTimeout(load, 4000);
     return () => clearTimeout(timer);

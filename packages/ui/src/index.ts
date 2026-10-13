@@ -11,6 +11,7 @@ export { default as DiffView, type DiffViewHunk } from "./components/DiffView.sv
 export { default as EmptyState } from "./components/EmptyState.svelte";
 export { default as Field } from "./components/Field.svelte";
 export { default as FileTable, type FileRow } from "./components/FileTable.svelte";
+export { default as LiveIndicator } from "./components/LiveIndicator.svelte";
 export { default as Loading } from "./components/Loading.svelte";
 export { default as LogView } from "./components/LogView.svelte";
 export { default as MetaList } from "./components/MetaList.svelte";

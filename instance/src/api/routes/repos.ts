@@ -21,6 +21,7 @@ import {
   mintToken,
 } from "../../git/artifacts.js";
 import { subscribeRepo, unsubscribeRepo } from "../../git/subscriptions.js";
+import { publish } from "../../live/publish.js";
 import { canRead, isOwner, requireOwner, type AppEnv, type OwnerEnv } from "../session.js";
 
 /**
@@ -164,6 +165,7 @@ reposRoute.post("/", ownerOnly, async (c) => {
       now,
     )
     .run();
+  await publish(c.env, name, { type: "repo", action: "created" }, visibility);
   return c.json(toRepo((await withPush(db, name))!), 201);
 });
 
@@ -212,6 +214,8 @@ reposRoute.patch("/:repo", ownerOnly, async (c) => {
     )
     .bind(next.description, next.visibility, next.default_branch, new Date().toISOString(), name)
     .run();
+  // Announced with the new visibility: a repo made private isn't told to visitors.
+  await publish(c.env, name, { type: "repo", action: "updated" }, next.visibility);
   return c.json(toRepo((await withPush(db, name))!));
 });
 
@@ -230,6 +234,7 @@ reposRoute.delete("/:repo", ownerOnly, async (c) => {
   }
   await unsubscribeRepo(c.env.CF_API_TOKEN, row.subscription_id);
   await deleteRepoRows(await getDb(c.env.DB), name);
+  await publish(c.env, name, { type: "repo", action: "deleted" }, row.visibility);
   return c.json({ deleted: name });
 });
 

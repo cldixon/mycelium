@@ -1,3 +1,4 @@
+import type { LiveHub } from "../live/hub.js";
 import type { RunnerContainer } from "../worker.js";
 
 /**
@@ -5,7 +6,9 @@ import type { RunnerContainer } from "../worker.js";
  * plus the optional secrets, which the config doesn't declare so that a
  * deploy without them works.
  */
-export type Bindings = Omit<Env, "RUNNER"> & {
+export type Bindings = Omit<Env, "RUNNER" | "LIVE"> & {
+  /** Live updates: WebSocket hubs per repo and for the instance (see src/live/). */
+  LIVE: DurableObjectNamespace<LiveHub>;
   /** The runner container's Durable Object namespace (see src/runner.ts). */
   RUNNER: DurableObjectNamespace<RunnerContainer>;
   /**

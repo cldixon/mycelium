@@ -17,6 +17,7 @@
   import PullFiles from "../PullFiles.svelte";
   import PullCommits from "../PullCommits.svelte";
   import MergeBox from "../MergeBox.svelte";
+  import { debounce, onLive } from "$lib/live.svelte";
 
   let { data } = $props();
 
@@ -49,6 +50,15 @@
   let error = $state<string | null>(null);
 
   const reload = () => invalidate("mycelium:pull");
+
+  // Live: this pull request's events (and reconnects) reload it.
+  const liveReload = debounce(reload);
+  $effect(() => {
+    const n = pull.number;
+    return onLive(repo, ["pull"], (m) => {
+      if (!m || (m.type === "pull" && m.number === n)) liveReload();
+    });
+  });
 
   async function act(fn: () => Promise<unknown>) {
     busy = true;

@@ -38,6 +38,7 @@
     {#if signedIn}
       <NavLink href="/" current={page.url.pathname === "/"}>repositories</NavLink>
     {/if}
+    <NavLink href="/activity" current={page.url.pathname === "/activity"}>activity</NavLink>
   {/snippet}
   {#snippet account()}
     {#if signedIn}
