@@ -4,9 +4,16 @@
   "description": "A self-deployed Mycelium instance: git repos on Cloudflare Artifacts, pull requests, actions",
   "type": "module",
   "private": true,
+  "bin": {
+    "mycelium": "cli/mycelium.ts"
+  },
   "scripts": {
+    "setup": "bun cli/mycelium.ts setup",
+    "secrets": "bun cli/mycelium.ts secrets",
     "dev": "bun scripts/dev.ts",
     "build": "cd web && bun --bun vite build",
+    "deploy": "bun cli/mycelium.ts deploy",
+    "pack": "bun scripts/pack.ts",
     "deploy:dry": "cf deploy --dry-run",
     "types": "cf workers types",
     "typecheck": "cf workers types && tsc --noEmit",
@@ -16,7 +23,8 @@
     "@cloudflare/containers": "0.3.7",
     "@mycelium/platform": "workspace:*",
     "diff": "^9.0.0",
-    "hono": "^4.7.0"
+    "hono": "^4.7.0",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@types/bun": "^1.2.0",

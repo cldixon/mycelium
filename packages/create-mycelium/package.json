@@ -1,0 +1,14 @@
+{
+  "name": "create-mycelium",
+  "version": "0.1.0",
+  "description": "Create your own Mycelium instance: a private, self-deployed GitHub-like service on Cloudflare",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "typescript": "^5.9.3"
+  }
+}
