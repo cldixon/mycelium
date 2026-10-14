@@ -7,17 +7,16 @@
 # so the build needs no Debian mirror. Images come through mirror.gcr.io
 # (Docker Hub is rate-limited from our dev environment).
 #
-# bun is copied in as a single binary. Before building or deploying:
-#
-#   cp "$(which bun)" runner/bun
-#
-# runner/bun is gitignored; never commit it.
+# bun comes from its official image (through mirror.gcr.io), so building needs
+# nothing but Docker. Keep the version in step with the bun you develop with;
+# instance/package/runner/Dockerfile is the published package's copy.
+FROM mirror.gcr.io/oven/bun:1.4.2-slim AS bun
 FROM mirror.gcr.io/library/node:22-bookworm-slim AS node
 
 FROM mirror.gcr.io/library/buildpack-deps:bookworm-scm
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
-COPY bun /usr/local/bin/bun
+COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
   && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
   && ln -s bun /usr/local/bin/bunx \
