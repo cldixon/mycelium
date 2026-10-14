@@ -72,11 +72,11 @@ test("cf auth whoami", () => {
 });
 
 test("runner Dockerfiles", () => {
-  // In the repo, the runner image copies a bun binary from runner/.
+  // Both the repo's and the published package's runner images take bun from
+  // its official image, so building needs nothing but Docker.
   const dockerfile = runnerDockerfile();
   expect(dockerfile).toBe(join(import.meta.dirname, "..", "..", "runner", "Dockerfile"));
-  expect(copiesBunBinary(readFileSync(dockerfile, "utf-8"))).toBe(true);
-  // The published package takes bun from an image instead.
+  expect(copiesBunBinary(readFileSync(dockerfile, "utf-8"))).toBe(false);
   const packaged = readFileSync(
     join(import.meta.dirname, "..", "package", "runner", "Dockerfile"),
     "utf-8",

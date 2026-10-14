@@ -46,7 +46,6 @@ delete resources whose names start with `myc-`.** Never touch anything else.
 To test a branch end to end, deploy your own throwaway instance named `myc-<something>`:
 
 ```sh
-cp "$(which bun)" runner/bun                     # once; gitignored
 docker info >/dev/null 2>&1 || (dockerd >/tmp/dockerd.log 2>&1 &)   # cf deploy builds the runner image
 (cd /tmp && cf queues create --queue-name myc-x-events && cf queues create --queue-name myc-x-jobs)
 bun run --cwd instance build                     # the SPA
