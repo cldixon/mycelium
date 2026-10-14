@@ -8,14 +8,16 @@
     "instance",
     "instance/web",
     "runner",
-    "packages/*"
+    "packages/*",
+    "demo/fleet"
   ],
   "scripts": {
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "bun run --filter '*' typecheck",
-    "test": "bun test instance packages runner",
-    "check": "bun run format:check && bun run typecheck && bun run --cwd instance check && bun run test"
+    "test": "bun test instance packages runner demo",
+    "check": "bun run format:check && bun run typecheck && bun run --cwd instance check && bun run test",
+    "fleet": "bun run demo/fleet/fleet.ts"
   },
   "devDependencies": {
     "prettier": "^3.9.6",

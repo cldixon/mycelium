@@ -31,7 +31,7 @@ Proven by the probes in `probes/` and written up in the Tempra library `cl_dixon
 ## Repo layout (bun workspaces, isolated linker, like igloo)
 
 ```
-package.json              workspaces: instance, instance/web, runner, packages/*
+package.json              workspaces: instance, instance/web, runner, packages/*, demo/fleet
 instance/                 @mycelium/instance: the Worker (Hono)
   config.ts               defineMycelium(): the ONLY place the cf config is built
   cli/mycelium.ts         the `mycelium` CLI: setup, deploy, secrets, dev
@@ -60,6 +60,7 @@ packages/platform/        copied from igloo: migrate, settings, web-sessions, oa
 packages/ui/              copied from igloo's @igloo/ui as @mycelium/ui: tokens + Svelte components
 packages/create-mycelium/ `bun create mycelium`: writes an owner's deploy folder (see instance/cli, scripts/pack.ts)
 skills/mycelium/SKILL.md  agent skill: working in an instance over MCP and git
+demo/fleet/               `bun run fleet`: scripted agents on one repo at once over MCP + git (seed/: tinyroute)
 probes/                   throwaway exploration code; do not import from it
 ```
 
