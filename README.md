@@ -1,54 +1,84 @@
 # Mycelium
 
-A private, single-owner, GitHub-like service that you deploy into your own Cloudflare account.
-Git repos live in Cloudflare Artifacts; a Worker (Hono + a SvelteKit SPA) serves code browsing,
-pull requests and Actions-style workflows; D1 holds instance state; Queues carry push events and
-jobs; a Container runs git, merges and workflow steps. Agent-first features come later, on top of
-this base.
+A private, single-owner, GitHub-like service that you deploy into your own Cloudflare account,
+built for agents as much as for people. Git repos live in
+[Cloudflare Artifacts](https://developers.cloudflare.com/artifacts/); one Worker (Hono + a
+SvelteKit SPA) serves code browsing, pull requests, Actions-style workflows and an MCP server; D1
+holds instance state; Queues carry push events and jobs; Durable Objects push live updates; a
+Container runs git, merges and workflow steps.
 
-Read [`ARCHITECTURE.md`](ARCHITECTURE.md) (the v0 contract) and [`CLAUDE.md`](CLAUDE.md)
+- **Code:** repos (create, import a public git URL), files, branches, tags, commits and diffs,
+  contributors.
+- **Pull requests:** branch to branch, diff, merge / squash / rebase in the runner container,
+  conflicts reported without touching the base, comments.
+- **Actions:** `.mycelium/workflows/*.yml` run in a container on push, on pull requests or by hand,
+  with logs streamed while they run.
+- **Required checks:** workflows that must pass on a PR's head before it can merge.
+- **Agents:** an MCP server at `/mcp`; API tokens issued to named agents (read or write); every PR,
+  comment, run and git credential grant records which agent did it.
+- **Live:** pages update in place over WebSockets; `/activity` shows everything as it happens.
+
+Read [`ARCHITECTURE.md`](ARCHITECTURE.md) (the contract) and [`CLAUDE.md`](CLAUDE.md)
 (conventions) before changing anything.
+
+## Try the demo
+
+<https://mycelium-demo.cl-dixon.workers.dev> runs this code. Its public repo
+[`tinyroute`](https://mycelium-demo.cl-dixon.workers.dev/tinyroute) has pull requests opened and
+merged by agents, workflow runs and a required `test` check; [`/activity`](https://mycelium-demo.cl-dixon.workers.dev/activity)
+follows what happens live.
+
+## Agents
+
+An agent works here the way a developer does: through the MCP server for repos, pull requests and
+workflows, and plain git for code.
+
+1. The owner creates a token for the agent in **Settings → API tokens** (agent name, read or write).
+2. The agent connects to `https://<instance>/mcp` with `Authorization: Bearer <token>`. For Claude
+   Code: `claude mcp add --transport http mycelium https://<instance>/mcp --header "Authorization: Bearer <token>"`.
+3. `git_credentials` returns a short-lived git token and the exact commands; then clone, branch,
+   commit, push, `open_pull`, wait for the checks in `get_pull`, `merge_pull`.
+
+[`skills/mycelium/SKILL.md`](skills/mycelium/SKILL.md) is the agent-facing guide.
+[`demo/fleet`](demo/fleet) runs several scripted agents against an instance at once.
 
 ## Deploy your own
 
-You need [Bun](https://bun.sh), a Cloudflare account (Workers paid plan, for Containers) and
-[Docker](https://docs.docker.com/get-docker/) running: deploying builds the runner's container
-image.
+You need [Bun](https://bun.sh), a Cloudflare account on the Workers paid plan (Containers and
+Artifacts), and [Docker](https://docs.docker.com/get-docker/) running: deploying builds the
+runner's container image.
 
 ```sh
-bun create mycelium my-mycelium
+git clone https://github.com/cldixon/mycelium && cd mycelium
+bun install
+cd instance
+bunx cf auth login                 # or set CLOUDFLARE_API_TOKEN
+bun run setup                      # Worker name, title, optional domain; creates the two queues
+bun run deploy                     # builds the web app and runner image, deploys, prints a setup code
 ```
 
-That makes a folder (your own repo: commit it) holding your settings, `mycelium.config.json`, and
-depending on `@mycelium/instance`, which ships the prebuilt Worker, web app and runner. It signs
-you in to Cloudflare, asks for a Worker name, title and optional custom domain, creates the two
-queues (`<worker>-events`, `<worker>-jobs`) and offers to deploy. The first deploy prints a
-**setup code**: open `/signin` on your instance and sign in with your AT Protocol account (e.g.
-Bluesky) and that code to become its owner.
+Open `/signin` on your instance and sign in with your AT Protocol account (e.g. Bluesky) and the
+setup code to become its owner. Then create a repo, or import one, from the home page.
 
-Inside the folder:
-
-| Command                                             | What it does                                                       |
-| --------------------------------------------------- | ------------------------------------------------------------------ |
-| `bun run setup`                                     | Change the settings, create missing queues (re-run any time)       |
-| `bun run deploy`                                    | Deploy; the first deploy sets the setup code and OAuth key         |
-| `bun run dev`                                       | Run it locally on http://127.0.0.1:8787                            |
-| `bun run secrets`                                   | New setup code and OAuth key (before claiming only)                |
-| `CF_API_TOKEN=… bunx mycelium secrets cf-api-token` | Turn on push events (pushes start workflows, update pull requests) |
+| Command (in `instance/`)                                  | What it does                                                       |
+| --------------------------------------------------------- | ------------------------------------------------------------------ |
+| `bun run setup`                                           | Change the settings, create missing queues (re-run any time)       |
+| `bun run deploy`                                          | Deploy; the first deploy sets the setup code and OAuth key         |
+| `bun run dev`                                             | Run it locally on http://127.0.0.1:8787                            |
+| `bun run secrets`                                         | New setup code and OAuth key (before claiming only)                |
+| `CF_API_TOKEN=… bun cli/mycelium.ts secrets cf-api-token` | Turn on push events (pushes start workflows, update pull requests) |
 
 Push events are optional: without `CF_API_TOKEN` everything else works and workflows run by hand.
-Non-interactive setup takes flags: `mycelium setup --worker my-forge --title "My forge" --yes`.
+Non-interactive setup takes flags: `bun run setup --worker my-forge --title "My forge" --yes`.
 
-**Deploy on push:** the folder includes `.github/workflows/deploy.yml`, which deploys every push to
-`main` once the repo has a `CLOUDFLARE_API_TOKEN` secret, and skips until then. GitHub-hosted
-runners have the Docker it needs. CI never prints a setup code (logs may be public); run
-`bun run secrets` locally for one.
+After a deploy, Cloudflare rolls the new runner image out over a few minutes; workflow runs in that
+window report "runner image is out of date" and can be re-run.
 
-**Update:** `bun update @mycelium/instance && bun run deploy`. Migrations apply themselves.
-
-From a clone of this repo, the same CLI runs in `instance/`: `bun run setup`, `bun run deploy`
-(builds the web app first, and copies your bun into `runner/bun` for the image on linux-x64), and
-`bun run pack` builds both publishable packages into `instance/dist/` (it doesn't publish).
+**Packaged install (not published yet):** `bun run pack` builds `@mycelium/instance` and
+`create-mycelium`. Once published, `bun create mycelium my-mycelium` makes a deploy folder (your
+own repo) with the same commands, `bun update @mycelium/instance && bun run deploy` updates it, and
+its `.github/workflows/deploy.yml` deploys every push to `main` once the repo has a
+`CLOUDFLARE_API_TOKEN` secret.
 
 ## Layout
 
@@ -71,6 +101,8 @@ runner/              @mycelium/runner: the container (Dockerfile, Bun server, jo
 packages/platform/   @mycelium/platform: migrations, settings, OAuth, sessions (from igloo)
 packages/ui/         @mycelium/ui: design tokens and Svelte components (from igloo)
 packages/create-mycelium/  `bun create mycelium`: an owner's deploy folder
+skills/mycelium/     agent skill: working with an instance over MCP and git
+demo/fleet/          scripted agents working on an instance at once
 probes/              throwaway exploration code; not part of the build
 ```
 
@@ -90,8 +122,8 @@ Instance settings live in `instance/mycelium.config.json` (gitignored; copy
 `mycelium.config.example.json`). `MYCELIUM_*` environment variables override it and
 `MYCELIUM_CONFIG` picks another file.
 
-Building the runner image needs the bun binary next to its Dockerfile:
-`cp "$(which bun)" runner/bun` (gitignored). Validate the whole config without deploying:
+Building the runner image needs only Docker (bun comes from its official image). Validate the
+whole config without deploying:
 
 ```sh
 cd instance && MYCELIUM_CONFIG=mycelium.config.example.json bunx cf deploy --dry-run
@@ -99,4 +131,4 @@ cd instance && MYCELIUM_CONFIG=mycelium.config.example.json bunx cf deploy --dry
 
 ## License
 
-MIT
+MIT — see [`LICENSE`](LICENSE).
