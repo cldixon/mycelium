@@ -15,3 +15,6 @@ ARCHITECTURE.md
 
 # Throwaway exploration code, formatted its own way
 probes/
+
+# The fleet demo's seed repo: features edit it by exact anchors
+demo/fleet/seed/
